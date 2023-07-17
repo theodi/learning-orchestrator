@@ -1,0 +1,270 @@
+<%- include('../partials/header') %>
+<link rel="stylesheet" href="//cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css"/>
+    <div class="jumbotron text-center text-primary" style="max-width: 80%; margin-left:auto; margin-right: auto;">
+        <h1><span class="fa fa-lock"></span>Import page</h1>
+
+        <h2>Select import type</h2>
+        <!--<form id="schemaForm">-->
+
+            <label for="schemaType">Schema Type:</label>
+            <select id="schemaType" name="schemaType"></select>
+            <br>
+
+            <label for="csvFile">CSV File:</label>
+            <input type="file" id="csvFile" name="csvFile">
+            <br>
+
+            <h2>Import preview</h2>
+            <table id="csvPreview" style="display: none;">
+            <!-- The table will be populated dynamically -->
+            </table>
+            <br/>
+            <button id="submit" type="submit" style="display:none;">Import</button>
+            <br/>
+        <!--</form>-->
+    </div>
+</div>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.11.3/js/jquery.dataTables.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-csv/1.0.11/jquery.csv.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ajv/8.12.0/ajv7.min.js"></script>
+
+<script>
+    // Function to render the data table with validation status
+    const validatedRows = [];
+    function renderDataTable(columnTitles, rows) {
+      const table = $('#csvPreview');
+      table.empty();
+
+      // Add table headers with column titles
+      const thead = $('<thead></thead>');
+      const headerRow = $('<tr></tr>');
+      columnTitles.forEach(columnTitle => {
+        const th = $('<th></th>').text(columnTitle);
+        headerRow.append(th);
+      });
+      // Add a new column for the validation status
+      headerRow.append('<th>Validation Status</th>');
+      thead.append(headerRow);
+      headerRow.append('<th>Import Status</th>');
+      thead.append(headerRow);
+      table.append(thead);
+
+      // Add table rows with data and validation status
+      const tbody = $('<tbody></tbody>');
+      rows.forEach(row => {
+        const tr = $('<tr></tr>');
+        columnTitles.forEach(columnTitle => {
+          const td = $('<td></td>');
+          if (columnTitle === 'description') {
+              const cellText = row.data[columnTitle].replace(/ \| /g, '<br/>')
+              td.html(cellText);
+          } else {
+              td.text(row.data[columnTitle]);
+          }
+          tr.append(td);
+        });
+        // Add a new cell for the validation status
+        const validationStatusCell = $('<td></td>').text(row.isValid);
+        tr.append(validationStatusCell);
+
+        const importStatusCell = $('<td id="import-'+row.id+'"></td>');
+        tr.append(importStatusCell);
+
+        tbody.append(tr);
+      });
+      table.append(tbody);
+
+      // Show the table
+      table.show();
+
+      var doscroll = false;
+      const dataTable = $('#csvPreview').DataTable({
+        dom: 'Bfrtip',
+        pageLength: 50,
+        scrollX: doscroll,
+        buttons: [
+            'copyHtml5',
+            'excelHtml5',
+            'csvHtml5',
+            'pdfHtml5'
+        ]
+      });
+
+      // Enable the import button if there is valid data
+      const importButton = $('#submit');
+      const isValidData = rows.every(row => row.isValid);
+      if (isValidData) {
+        importButton.prop('disabled', !isValidData);
+        importButton.show();
+        importButton.on('click', function(event){
+          event.preventDefault();
+          importData();
+        });
+      }
+    }
+
+    function validateRow(row, schema) {
+      const Ajv = window.ajv7;
+      const ajv = new Ajv(); // Create an instance of Ajv
+      const validate = ajv.compile(schema); // Compile the JSON schema using Ajv
+      const isValid = validate(row); // Validate the row against the compiled schema
+      if (!isValid) {
+        console.error('CSV data validation errors:', validate.errors);
+      }
+      return isValid;
+    }
+
+    // Function to validate CSV data against the schema using Ajv
+    async function validateCSV(csvData, schemaType) {
+      try {
+        // Fetch the schema file based on the schemaType
+        const response = await fetch(`schemas/${schemaType}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch the schema.');
+        }
+
+        const schema = await response.json();
+
+        // Extract column titles from the first row of the CSV data
+        const columnTitles = csvData[0];
+
+        // Validate each row individually
+        for (let i = 1; i < csvData.length; i++) {
+          const row = csvData[i];
+          const jsonObject = {};
+          columnTitles.forEach((columnTitle, index) => {
+            const columnType = schema.properties[columnTitle].type; // Get the data type from the schema
+            const cellValue = row[index];
+
+            // Convert the value to the appropriate data type based on the schema
+            if (cellValue != '') {
+              if (columnType === 'integer') {
+                jsonObject[columnTitle] = parseInt(cellValue, 10);
+              } else if (columnType === 'number') {
+                jsonObject[columnTitle] = parseFloat(cellValue);
+              } else if (columnType === 'boolean') {
+                jsonObject[columnTitle] = cellValue.toLowerCase() === 'true';
+              } else if (columnType === 'array') {
+                // Split the comma-separated values and convert items to the appropriate data type
+                const items = cellValue.split(',').map(item => item.trim());
+                jsonObject[columnTitle] = items.map(item => {
+                  // Convert each item to the appropriate data type
+                  if (!isNaN(item)) {
+                    return parseFloat(item); // Assume it's a number if it can be parsed as one
+                  } else if (item.toLowerCase() === 'true' || item.toLowerCase() === 'false') {
+                    return item.toLowerCase() === 'true'; // Convert to boolean if it's "true" or "false"
+                  } else {
+                    return item; // Otherwise, treat as a string
+                  }
+                });
+              } else {
+                jsonObject[columnTitle] = cellValue;
+              }
+            }
+          });
+
+          const isValidRow = validateRow(jsonObject, schema);
+          validatedRows.push({ data: jsonObject, isValid: isValidRow, id: i });
+        }
+
+        // Render the data table with validation status
+        renderDataTable(columnTitles, validatedRows);
+
+        return validatedRows.every(row => row.isValid);
+      } catch (error) {
+        console.error('Error validating CSV data:', error);
+        return false;
+      }
+    }
+
+    async function performImport(schemaType, object) {
+      // Testing only
+      /*
+      var responseData = { id: 19 }
+      return { success: true, data: responseData };
+      */
+      try {
+        const response = await fetch('/import?type=task', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(object),
+        });
+
+        const responseData = await response.json();
+        if (!response.ok) {
+          throw new Error(responseData.error);
+        }
+
+        return { success: true, data: responseData.data };
+      } catch (error) {
+        console.error('Import failed:', error);
+        return { success: false, error: error};
+      }
+    }
+
+    // Function to perform the import when the import button is pressed
+    async function importData() {
+      const selectedSchema = $('#schemaType').val();
+      for (const row of validatedRows) {
+        result = await performImport(selectedSchema,row.data);
+        console.log(result);
+        importStatusCell = $("#import-" + row.id);
+        if (result.success) {
+          importStatusCell.text('SUCCESS');
+          console.log(result.data);
+          if (result.data && result.data.id) {
+            // If the import was successful and the task has an ID, create a hyperlink
+            const taskUrl = `https://app.forecast.it/T${result.data.company_task_id}`;
+            const link = $('<a></a>').attr('href', taskUrl).text('SUCCESS');
+            link.attr('target','_blank');
+            importStatusCell.empty().append(link);
+          }
+        } else {
+          importStatusCell.text('FAILED | '+ result.error);
+        }
+      };
+    }
+
+    // Fetch the available schemas and populate the select dropdown
+    fetch('/schemas', {
+        headers: {
+        'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(schemas => {
+        const schemaTypeSelect = document.getElementById('schemaType');
+        schemas.forEach(schema => {
+        const option = document.createElement('option');
+        option.value = schema;
+        option.textContent = schema;
+        schemaTypeSelect.appendChild(option);
+        });
+    })
+    .catch(error => {
+        console.error('Error fetching schemas:', error);
+        alert('Error fetching schemas. Please try again later.');
+    });
+
+    // Submit form event listener
+    $('#csvFile').change(async () => {
+      const selectedSchema = $('#schemaType').val();
+      const csvFile = $('#csvFile')[0].files[0];
+
+      if (!csvFile) {
+        alert('Please select a CSV file.');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async function (e) {
+        const csvData = $.csv.toArrays(e.target.result);
+        const isValidCSV = await validateCSV(csvData, selectedSchema);
+      };
+      reader.readAsText(csvFile);
+    });
+</script>
+<%- include('../partials/footer') %>

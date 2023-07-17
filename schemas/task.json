@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "role": {
+      "type": "integer"
+    },
+    "project_id": {
+      "type": "integer"
+    },
+    "parent_task_id": {
+      "type": "integer"
+    },
+    "low_estimate": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "high_estimate": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "estimate": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "approved": {
+      "type": "boolean",
+      "default": true
+    },
+    "start_date": {
+      "type": "string"
+    },
+    "end_date": {
+      "type": "string"
+    },
+    "bug": {
+      "type": "boolean"
+    },
+    "high_priority": {
+      "type": "boolean"
+    },
+    "un_billable": {
+      "type": "boolean"
+    },
+    "blocked": {
+      "type": "boolean"
+    },
+    "sprint": {
+      "type": "integer"
+    },
+    "workflow_column": {
+      "type": "integer"
+    },
+    "milestone": {
+      "type": "integer"
+    },
+    "assigned_persons": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "owner_id": {
+      "type": "integer"
+    }
+  },
+  "required": ["title","description","project_id"]
+}
