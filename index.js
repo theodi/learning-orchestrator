@@ -152,7 +152,6 @@ app.get('/schemas', (req, res) => {
 app.get('/schemas/:schemaType', (req, res) => {
   const { schemaType } = req.params;
   const schemaFilePath = path.join(__dirname, 'schemas', `${schemaType}.json`);
-  console.log(schemaFilePath);
   res.json(require(schemaFilePath));
 });
 
@@ -205,7 +204,6 @@ async function getForecastData(type) {
       'X-FORECAST-API-KEY': apiKey,
     },
   });
-  console.log(response.data);
   return response.data;
 }
 
@@ -243,8 +241,6 @@ app.post('/import', async (req, res) => {
   } catch (error) {
     // Return the error details if the API call fails
     response = error.response;
-    console.log(response.status);
-    console.log(response.data.message);
     res.status(response.status).json({ success: false, error: response.data.message });
   }
 });
