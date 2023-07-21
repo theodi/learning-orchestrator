@@ -199,6 +199,9 @@ function respondWithCsv(req, res, data) {
 async function getForecastData(type) {
   const apiKey = process.env.FORECAST_API_KEY;
   const apiUrl = `https://api.forecast.it/api/v1/${type}`;
+  if (type == "persons") {
+    const apiUrl = `https://api.forecast.it/api/v2/${type}`;
+  }
   const response = await axios.get(apiUrl, {
     headers: {
       'X-FORECAST-API-KEY': apiKey,
@@ -307,6 +310,11 @@ app.get('/:type', async (req, res) => {
     return res.status(401).render("errors/401");
   }
   const { type } = req.params;
+  // Restirct the types
+  if (type !== "labels" && type !== "projects") {
+    res.locals.pageTitle ="404 Not Found";
+    return res.status(404).render("errors/404");
+  }
   try {
     const data = await getForecastData(type);
 
