@@ -1,5 +1,6 @@
 <%- include('../partials/header') %>
 <link rel="stylesheet" href="//cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css"/>
+<link rel="stylesheet" type="text/css" href="//cdn.datatables.net/buttons/2.2.3/css/buttons.dataTables.min.css"/>
     <div class="jumbotron text-center text-primary" style="max-width: 80%; margin-left:auto; margin-right: auto;">
         <h1><span class="fa fa-lock"></span>Import page</h1>
 
@@ -26,6 +27,9 @@
 </div>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.11.3/js/jquery.dataTables.min.js"></script>
+<script src="//cdn.datatables.net/buttons/2.2.3/js/dataTables.buttons.min.js"></script>
+<script src="//cdn.datatables.net/buttons/2.2.3/js/buttons.colVis.min.js"></script>
+<script src="//cdn.datatables.net/buttons/2.2.3/js/buttons.html5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-csv/1.0.11/jquery.csv.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ajv/8.12.0/ajv7.min.js"></script>
 
@@ -71,6 +75,10 @@
         const importStatusCell = $('<td id="import-'+row.id+'"></td>');
         tr.append(importStatusCell);
 
+        const importIDCell = $('<td id="importID-'+row.id+'"></td>');
+        tr.append(importIDCell);
+
+
         tbody.append(tr);
       });
       table.append(tbody);
@@ -84,10 +92,10 @@
         pageLength: 50,
         scrollX: doscroll,
         buttons: [
-            'copyHtml5',
-            'excelHtml5',
-            'csvHtml5',
-            'pdfHtml5'
+            'copy',
+            'excel',
+            'csv',
+            'pdf'
         ]
       });
 
@@ -212,6 +220,7 @@
         result = await performImport(selectedSchema,row.data);
         console.log(result);
         importStatusCell = $("#import-" + row.id);
+        importIDCell = $("#importID-" + row.id);
         if (result.success) {
           importStatusCell.text('SUCCESS');
           console.log(result.data);
@@ -219,9 +228,10 @@
             // If the import was successful and the task has an ID, create a hyperlink
             const taskUrl = `https://app.forecast.it/T${result.data.company_task_id}`;
             const taskId = result.data.id;
-            const link = $('<a></a>').attr('href', taskUrl).text('SUCCESS (' + taskId + ')');
+            const link = $('<a></a>').attr('href', taskUrl).text('SUCCESS');
             link.attr('target','_blank');
             importStatusCell.empty().append(link);
+            importIDCell.empty().innerHTML = taskId;
           }
         } else {
           importStatusCell.text('FAILED | '+ result.error);
