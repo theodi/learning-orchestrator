@@ -218,7 +218,8 @@
           if (result.data && result.data.id) {
             // If the import was successful and the task has an ID, create a hyperlink
             const taskUrl = `https://app.forecast.it/T${result.data.company_task_id}`;
-            const link = $('<a></a>').attr('href', taskUrl).text('SUCCESS');
+            const taskId = result.data.id;
+            const link = $('<a></a>').attr('href', taskUrl).text('SUCCESS (' + taskId + ')');
             link.attr('target','_blank');
             importStatusCell.empty().append(link);
           }
