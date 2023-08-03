@@ -88,17 +88,7 @@
       table.show();
 
       var doscroll = false;
-      const dataTable = $('#csvPreview').DataTable({
-        dom: 'Bfrtip',
-        pageLength: 50,
-        scrollX: doscroll,
-        buttons: [
-            'copy',
-            'excel',
-            'csv',
-            'pdf'
-        ]
-      });
+      createDataTable();
 
       // Enable the import button if there is valid data
       const importButton = $('#submit');
@@ -111,6 +101,20 @@
           importData();
         });
       }
+    }
+
+    function createDataTable() {
+      const dataTable = $('#csvPreview').DataTable({
+        dom: 'Bfrtip',
+        pageLength: 50,
+        scrollX: doscroll,
+        buttons: [
+            'copy',
+            'excel',
+            'csv',
+            'pdf'
+        ]
+      });
     }
 
     function validateRow(row, schema) {
@@ -232,12 +236,15 @@
             const link = $('<a></a>').attr('href', taskUrl).text('SUCCESS');
             link.attr('target','_blank');
             importStatusCell.empty().append(link);
-            importIDCell.empty().innerHTML = taskId;
+            importIDCell.empty().html(taskId);
           }
         } else {
           importStatusCell.text('FAILED | '+ result.error);
         }
       };
+      const dataTable = $('#csvPreview').DataTable();
+      dataTable.destroy();
+      createDataTable();
     }
 
     // Fetch the available schemas and populate the select dropdown
