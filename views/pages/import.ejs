@@ -87,7 +87,6 @@
       // Show the table
       table.show();
 
-      var doscroll = false;
       createDataTable();
 
       // Enable the import button if there is valid data
@@ -104,6 +103,7 @@
     }
 
     function createDataTable() {
+      var doscroll = false;
       const dataTable = $('#csvPreview').DataTable({
         dom: 'Bfrtip',
         pageLength: 50,
