@@ -265,25 +265,40 @@ app.post('/webhooks/form', async (req, res) => {
   if (!project_id || isNaN(parseInt(project_id))) {
     return res.status(400).json({ error: "Invalid or missing project_id" });
   }
+
+  console.log(req.body);
   // Extract HubSpot webhook payload
-  const { form, role, email, label, last_name, first_name, organisation, link } = req.body;
+  const {
+    hs_form_title,
+    hs_form_id,
+    role,
+    email,
+    label,
+    last_name,
+    first_name,
+    organisation
+  } = req.body;
 
   // Validate required fields
-  if (!form || !first_name || !last_name || !email) {
+  if (!hs_form_title || !hs_form_id || !first_name || !last_name || !email) {
     return res.status(400).json({ error: "Missing required fields in webhook payload" });
   }
 
+  // Construct the link using hs_form_id
+  const portalId = "748510"; // Replace with your actual HubSpot portal ID
+  const formSubmissionLink = `https://app.hubspot.com/submissions/${portalId}/form/${hs_form_id}/submissions`;
+
   // Prepare the task data for the Forecast API
   const taskData = {
-    title: `${first_name} ${last_name} | ${form} `,
+    title: `${first_name} ${last_name} | ${hs_form_title}`,
     description: `
-<strong>Form:</strong> ${form}<br/>
-<strong>Name:</strong> ${first_name} ${last_name}<br/>
-<strong>Email:</strong> ${email}<br/>
-<strong>Organisation:</strong> ${organisation}<br/>
-<strong>Role:</strong> ${role || "Not provided"}<br/>
-<strong>Label:</strong> ${label || "Not provided"}<br/>
-<strong>Link:</strong> <a href="${link || "#"}" target="_blank">${link || "N/A"}</a>
+      <strong>Form:</strong> ${hs_form_title}<br/>
+      <strong>Name:</strong> ${first_name} ${last_name}<br/>
+      <strong>Email:</strong> ${email}<br/>
+      <strong>Organisation:</strong> ${organisation}<br/>
+      <strong>Role:</strong> ${role || "Not provided"}<br/>
+      <strong>Label:</strong> ${label || "Not provided"}<br/>
+      <strong>Submission Link:</strong> <a href="${formSubmissionLink}" target="_blank">${formSubmissionLink}</a>
     `.trim(),
     project_id: parseInt(project_id), // Convert to integer
     approved: true // Default to approved
@@ -308,6 +323,7 @@ app.post('/webhooks/form', async (req, res) => {
     res.status(500).json({ error: 'Failed to create task in Forecast', details: error.response?.data || error.message });
   }
 });
+
 
 // Function to validate JSON against the schema
 function validateJSONAgainstSchema(data) {
