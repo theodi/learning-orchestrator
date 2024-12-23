@@ -249,7 +249,7 @@ app.post('/import', async (req, res) => {
   }
 });
 
-app.post('/webhook', async (req, res) => {
+app.post('/webhooks/form', async (req, res) => {
   // Extract the API key from headers or query parameters
   const apiKey = req.headers['x-api-key'] || req.query.api_key;
 
