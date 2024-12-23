@@ -250,7 +250,6 @@ app.post('/import', async (req, res) => {
 });
 
 app.post('/webhook', async (req, res) => {
-  console.log('webhook received');
   // Extract the API key from headers or query parameters
   const apiKey = req.headers['x-api-key'] || req.query.api_key;
 
@@ -266,8 +265,6 @@ app.post('/webhook', async (req, res) => {
   if (!project_id || isNaN(parseInt(project_id))) {
     return res.status(400).json({ error: "Invalid or missing project_id" });
   }
-
-  console.log(req.body);
   // Extract HubSpot webhook payload
   const { form, role, email, label, last_name, first_name, organisation, link } = req.body;
 
@@ -278,7 +275,7 @@ app.post('/webhook', async (req, res) => {
 
   // Prepare the task data for the Forecast API
   const taskData = {
-    title: `New Submission: ${form}`,
+    title: `${first_name} ${last_name} | ${form} `,
     description: `
 <strong>Form:</strong> ${form}<br/>
 <strong>Name:</strong> ${first_name} ${last_name}<br/>
