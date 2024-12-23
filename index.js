@@ -266,11 +266,12 @@ app.post('/webhook', async (req, res) => {
     return res.status(400).json({ error: "Invalid or missing project_id" });
   }
 
+  console.log(req.body);
   // Extract HubSpot webhook payload
-  const { form, role, email, label, last_name, first_name, organisation, hs_collectedform_submission_uuid } = req.body;
+  const { form, role, email, label, last_name, first_name, organisation, link } = req.body;
 
   // Validate required fields
-  if (!form || !first_name || !last_name || !email || !organisation) {
+  if (!form || !first_name || !last_name || !email) {
     return res.status(400).json({ error: "Missing required fields in webhook payload" });
   }
 
@@ -278,16 +279,15 @@ app.post('/webhook', async (req, res) => {
   const taskData = {
     title: `New Submission: ${form}`,
     description: `
-      Form: ${form}
-      Name: ${first_name} ${last_name}
-      Email: ${email}
-      Organisation: ${organisation}
-      Role: ${role || "Not provided"}
-      Label: ${label || "Not provided"}
-      Submission ID: ${hs_collectedform_submission_uuid || "N/A"}
+      <strong>Form:</strong> ${form}<br/>
+      <strong>Name:</strong> ${first_name} ${last_name}<br/>
+      <strong>Email:</strong> ${email}<br/>
+      <strong>Organisation:</strong> ${organisation}<br/>
+      <strong>Role:</strong> ${role || "Not provided"}<br/>
+      <strong>Label:</strong> ${label || "Not provided"}<br/>
+      <strong>Link:</strong> <a href="${link || "#"}" target="_blank">${link || "N/A"}</a>
     `.trim(),
     project_id: parseInt(project_id), // Convert to integer
-    labels: [hs_collectedform_submission_uuid], // Use UUID as a label
     approved: true // Default to approved
   };
 
