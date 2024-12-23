@@ -249,6 +249,62 @@ app.post('/import', async (req, res) => {
   }
 });
 
+app.post('/webhook', async (req, res) => {
+  // Extract the API key from headers or query parameters
+  const apiKey = req.headers['x-api-key'] || req.query.api_key;
+
+  // Validate the API key
+  if (!apiKey || apiKey !== process.env.WEBHOOK_API_KEY) {
+    return res.status(403).json({ error: "Forbidden: Invalid API key" });
+  }
+
+  // Extract project ID from query parameters
+  const { project_id } = req.query;
+
+  // Validate project_id
+  if (!project_id || isNaN(parseInt(project_id))) {
+    return res.status(400).json({ error: "Invalid or missing project_id" });
+  }
+
+  // Validate webhook payload
+  console.log(req.body);
+  const { title, description, start_date, end_date, high_priority } = req.body;
+  if (!title || !description) {
+    return res.status(400).json({ error: "Missing required fields: title or description" });
+  }
+
+  // Prepare the task data for the Forecast API
+  const taskData = {
+    title,
+    description,
+    project_id: parseInt(project_id), // Convert to integer
+    start_date: start_date || null,  // Optional
+    end_date: end_date || null,      // Optional
+    high_priority: high_priority || false, // Optional
+    approved: true // Default to approved
+  };
+
+  try {
+    // Send the task data to the Forecast API
+    const forecastApiKey = process.env.FORECAST_API_KEY;
+    const apiUrl = 'https://api.forecast.it/api/v3/tasks';
+
+    const response = await axios.post(apiUrl, taskData, {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-FORECAST-API-KEY': forecastApiKey,
+      },
+    });
+
+    // Respond with success
+    res.status(response.status).json({ success: true, data: response.data });
+  } catch (error) {
+    console.error('Error creating task in Forecast:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to create task in Forecast', details: error.response?.data || error.message });
+  }
+});
+
+
 // Function to validate JSON against the schema
 function validateJSONAgainstSchema(data) {
   const validate = ajv.compile(jsonSchema);
