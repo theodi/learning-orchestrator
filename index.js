@@ -266,21 +266,28 @@ app.post('/webhook', async (req, res) => {
     return res.status(400).json({ error: "Invalid or missing project_id" });
   }
 
-  // Validate webhook payload
-  console.log(req.body);
-  const { title, description, start_date, end_date, high_priority } = req.body;
-  if (!title || !description) {
-    return res.status(400).json({ error: "Missing required fields: title or description" });
+  // Extract HubSpot webhook payload
+  const { form, role, email, label, last_name, first_name, organisation, hs_collectedform_submission_uuid } = req.body;
+
+  // Validate required fields
+  if (!form || !first_name || !last_name || !email || !organisation) {
+    return res.status(400).json({ error: "Missing required fields in webhook payload" });
   }
 
   // Prepare the task data for the Forecast API
   const taskData = {
-    title,
-    description,
+    title: `New Submission: ${form}`,
+    description: `
+      Form: ${form}
+      Name: ${first_name} ${last_name}
+      Email: ${email}
+      Organisation: ${organisation}
+      Role: ${role || "Not provided"}
+      Label: ${label || "Not provided"}
+      Submission ID: ${hs_collectedform_submission_uuid || "N/A"}
+    `.trim(),
     project_id: parseInt(project_id), // Convert to integer
-    start_date: start_date || null,  // Optional
-    end_date: end_date || null,      // Optional
-    high_priority: high_priority || false, // Optional
+    labels: [hs_collectedform_submission_uuid], // Use UUID as a label
     approved: true // Default to approved
   };
 
@@ -303,7 +310,6 @@ app.post('/webhook', async (req, res) => {
     res.status(500).json({ error: 'Failed to create task in Forecast', details: error.response?.data || error.message });
   }
 });
-
 
 // Function to validate JSON against the schema
 function validateJSONAgainstSchema(data) {
