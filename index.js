@@ -250,6 +250,7 @@ app.post('/import', async (req, res) => {
 });
 
 app.post('/webhook', async (req, res) => {
+  console.log('webhook received');
   // Extract the API key from headers or query parameters
   const apiKey = req.headers['x-api-key'] || req.query.api_key;
 
@@ -279,13 +280,13 @@ app.post('/webhook', async (req, res) => {
   const taskData = {
     title: `New Submission: ${form}`,
     description: `
-      <strong>Form:</strong> ${form}<br/>
-      <strong>Name:</strong> ${first_name} ${last_name}<br/>
-      <strong>Email:</strong> ${email}<br/>
-      <strong>Organisation:</strong> ${organisation}<br/>
-      <strong>Role:</strong> ${role || "Not provided"}<br/>
-      <strong>Label:</strong> ${label || "Not provided"}<br/>
-      <strong>Link:</strong> <a href="${link || "#"}" target="_blank">${link || "N/A"}</a>
+<strong>Form:</strong> ${form}<br/>
+<strong>Name:</strong> ${first_name} ${last_name}<br/>
+<strong>Email:</strong> ${email}<br/>
+<strong>Organisation:</strong> ${organisation}<br/>
+<strong>Role:</strong> ${role || "Not provided"}<br/>
+<strong>Label:</strong> ${label || "Not provided"}<br/>
+<strong>Link:</strong> <a href="${link || "#"}" target="_blank">${link || "N/A"}</a>
     `.trim(),
     project_id: parseInt(project_id), // Convert to integer
     approved: true // Default to approved
