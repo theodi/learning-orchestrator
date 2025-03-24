@@ -1,7 +1,7 @@
 {
-  "name": "odi-nodejs-template",
-  "version": "1.0.0",
-  "description": "The ODI NodeJS Template (Express + PassportJS + Google Oauth)",
+  "name": "odi-forecast-helper",
+  "version": "2.0.0",
+  "description": "A system to help automate ODI systems, e.g. hubspot and forecast, mainly used by ODI Learning",
   "main": "index.js",
   "scripts": {
     "start": "nodemon index.js",

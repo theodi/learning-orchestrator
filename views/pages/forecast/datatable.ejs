@@ -1,9 +1,8 @@
-<%- include('../partials/header') %>
+<%- include('../../partials/header') %>
 <link rel="stylesheet" href="//cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css"/>
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
-<div class="container box">
-    <div class="jumbotron text-center text-primary">
-        <h1><span class="fa fa-lock"><%= type %></span></h1>
+<section class="content-block light-grey">
+        <h1><%= type %></h1>
         <table id="datatable">
             <thead>
               <tr>
@@ -22,8 +21,7 @@
                 <% }); %>
               </tbody>
         </table>
-    </div>
-</div>
+</section>
 
 <!-- Add DataTables JavaScript -->
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
@@ -53,4 +51,4 @@ $(document).ready(function () {
       });
     });
 </script>
-<%- include('../partials/footer') %>
+<%- include('../../partials/footer') %>

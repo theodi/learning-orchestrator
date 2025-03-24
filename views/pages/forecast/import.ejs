@@ -1,8 +1,9 @@
-<%- include('../partials/header') %>
+<%- include('../../partials/header') %>
+
 <link rel="stylesheet" href="//cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css"/>
 <link rel="stylesheet" type="text/css" href="//cdn.datatables.net/buttons/2.2.3/css/buttons.dataTables.min.css"/>
-    <div class="jumbotron text-center text-primary" style="max-width: 80%; margin-left:auto; margin-right: auto;">
-        <h1><span class="fa fa-lock"></span>Import page</h1>
+<section class="content-block light-grey">
+  <h1>Import</h1>
 
         <h2>Select import type</h2>
         <!--<form id="schemaForm">-->
@@ -23,8 +24,7 @@
             <button id="submit" type="submit" style="display:none;">Import</button>
             <br/>
         <!--</form>-->
-    </div>
-</div>
+</section>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.11.3/js/jquery.dataTables.min.js"></script>
 <script src="//cdn.datatables.net/buttons/2.2.3/js/dataTables.buttons.min.js"></script>
@@ -132,7 +132,7 @@
     async function validateCSV(csvData, schemaType) {
       try {
         // Fetch the schema file based on the schemaType
-        const response = await fetch(`schemas/${schemaType}`);
+        const response = await fetch(`/forecast/schemas/${schemaType}`);
         if (!response.ok) {
           throw new Error('Failed to fetch the schema.');
         }
@@ -198,7 +198,7 @@
       return { success: true, data: responseData };
       */
       try {
-        const response = await fetch('/import?type=task', {
+        const response = await fetch('/forecast/import?type=task', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -248,7 +248,7 @@
     }
 
     // Fetch the available schemas and populate the select dropdown
-    fetch('/schemas', {
+    fetch('/forecast/schemas', {
         headers: {
         'Accept': 'application/json'
         }
@@ -286,4 +286,4 @@
       reader.readAsText(csvFile);
     });
 </script>
-<%- include('../partials/footer') %>
+<%- include('../../partials/footer') %>
