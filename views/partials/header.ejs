@@ -38,6 +38,7 @@
 			<nav class="main-nav" aria-label="Main Menu">
 				<ul>
 				<% if(user) { %>
+					<li><a href="/hubspot" class="toggle-link <% if (page.link === '/hubspot') { %>selected<% } %>">Hubspot Ops</a></li>
 					<li><a href="/forecast" class="toggle-link <% if (page.link === '/forecast') { %>selected<% } %>">Forecast Ops</a></li>
 					<% if (user.authMethod === 'google') { %>
 						<!--<li><a href="/auth/local/reset-password">View/Change local password</a></li>-->

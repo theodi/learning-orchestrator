@@ -89,6 +89,9 @@ app.use('/private', express.static(__dirname + '/private'));
 const forecastRoutes = require("./routes/forecast");
 app.use("/forecast", ensureAuthenticated, forecastRoutes);
 
+const hubspotRoutes = require("./routes/hubspot");
+app.use("/hubspot", ensureAuthenticated, hubspotRoutes);
+
 // Other routes
 app.post('/webhooks/form', async (req, res) => {
   // Extract the API key from headers or query parameters
