@@ -4,7 +4,6 @@
 
 <section class="content-block light-grey">
   <h1><%= type %></h1>
-
   <% if (data && data.length > 0) { %>
     <table id="datatable">
       <thead>
@@ -18,7 +17,17 @@
         <% data.forEach((row) => { %>
           <tr>
             <% Object.keys(data[0]).forEach((key) => { %>
-              <td><%= row[key] %></td>
+              <td>
+                <% if (type === "products" && key === "id") { %>
+                  <!-- Link from products page to deals route -->
+                  <a href="/hubspot/products/<%= row.id %>/deals"><%= row.id %></a>
+                <% } else if (type === "deals" && key === "id") { %>
+                  <!-- Link from deals page to HubSpot's deal view -->
+                  <a href="https://app.hubspot.com/contacts/<%= hubspotPortalId %>/deal/<%= row.id %>" target="_blank"><%= row.id %></a>
+                <% } else { %>
+                  <%= row[key] %>
+                <% } %>
+              </td>
             <% }); %>
           </tr>
         <% }); %>
@@ -40,7 +49,7 @@
   $(document).ready(function () {
     const type = "<%= type %>";
     if ($('#datatable').length) {
-      const dataTable = $('#datatable').DataTable({
+      $('#datatable').DataTable({
         dom: 'Bfrtip',
         pageLength: 50,
         scrollX: type === "projects",

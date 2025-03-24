@@ -5,6 +5,15 @@ const { ensureAuthenticated } = require('../middleware/auth');
 
 const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
 
+router.get('/', ensureAuthenticated, function(req, res) {
+    const page = {
+        title: "Browse"
+      };
+    res.locals.page = page;
+
+    res.render('pages/hubspot/browse')
+});
+
 async function fetchProductsFromHubSpot() {
     const baseUrl = "https://api.hubapi.com/crm/v3/objects/products";
     const allProducts = [];
@@ -43,15 +52,6 @@ async function fetchProductsFromHubSpot() {
       throw error;
     }
   }
-
-router.get('/', ensureAuthenticated, function(req, res) {
-    const page = {
-        title: "Browse"
-      };
-    res.locals.page = page;
-
-    res.render('pages/hubspot/browse')
-});
 
 // GET /hubspot/courses → View list of courses in DataTable
 router.get("/products", ensureAuthenticated, async (req, res) => {
@@ -101,7 +101,8 @@ router.get("/products/:productId/deals", ensureAuthenticated, async (req, res) =
         return res.render("pages/forecast/datatable", {
           data: [],
           type: "deals",
-          page: { title: `No deals found for product ${productId}` }
+          page: { title: `No deals found for product ${productId}` },
+          hubspotPortalId: process.env.HUBSPOT_PORTAL_ID
         });
       }
 
@@ -125,7 +126,7 @@ router.get("/products/:productId/deals", ensureAuthenticated, async (req, res) =
       // Step 3: Fetch deal details
       const deals = await Promise.all(
         Array.from(dealIds).map(async (id) => {
-          const res = await axios.get(
+          const dealRes = await axios.get(
             `https://api.hubapi.com/crm/v3/objects/deals/${id}?properties=dealname,amount,closedate`,
             {
               headers: {
@@ -135,13 +136,15 @@ router.get("/products/:productId/deals", ensureAuthenticated, async (req, res) =
           );
           return {
             id,
-            ...res.data.properties
+            ...dealRes.data.properties
           };
         })
       );
 
       res.locals.page = { title: `Deals for Product ${productId}` };
       res.locals.type = "deals";
+      // Pass the portal id so the view can build links to HubSpot
+      res.locals.hubspotPortalId = process.env.HUBSPOT_PORTAL_ID;
       res.render("pages/forecast/datatable", { data: deals, type: "deals" });
 
     } catch (error) {
@@ -152,6 +155,7 @@ router.get("/products/:productId/deals", ensureAuthenticated, async (req, res) =
       });
     }
   });
+
 
 
 
