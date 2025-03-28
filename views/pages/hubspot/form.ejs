@@ -1,0 +1,233 @@
+<%- include('../../partials/header') %>
+<section class="content-block light-grey">
+
+  <div class="container">
+    <div class="jumbotron">
+      <h1 class="text-primary text-center"><span class="fa fa-user"></span> ODI Learning Course - Client Bookings</h1>
+      
+      <div class="row justify-content-center">
+        <div class="">
+          
+              
+              <form action="/hubspot/form" method="POST" id="hubspotForm" name="ODI Learning - Client Bookings">
+
+  
+                <div class="form-group row">
+                <!-- Sub-client (autocomplete shown, ID submitted) -->
+                <div class="form-group d-flex align-items-center">
+                    <label class="mb-0 mr-2" style="min-width: 200px;">Sub-client Name:</label>
+                    <input type="text" id="subClientInput" class="form-control" list="subClientList" autocomplete="on" required>
+
+                    <!-- Hidden field that will be submitted -->
+                    <input type="hidden" name="sub_client" id="subClientId">
+  
+                    <datalist id="subClientList"></datalist>
+                </div>
+
+
+
+
+                  <br/>
+                
+                  <div class="form-group row" >
+  
+                   <!-- Course location -->
+                  <div class="form-group d-flex align-items-center">
+                      <label class="mb-0 mr-2" style="min-width: 200px;">Course Location:</label>
+                      <div class="d-flex align-items-center">
+                      <div class="form-check mr-3">
+                          <input type="radio" class="form-check-input" name="course_location" value="Online" required>
+                          <label class="form-check-label">Online</label>
+                      </div>
+                      <div class="form-check">
+                          <input type="radio" class="form-check-input" name="course_location" value="In person" required>
+                          <label class="form-check-label">In Person</label>
+                      </div>
+                  </div>
+                  </div>
+                  <br/>
+                      <!-- Course Name -->
+                  <div class="form-group d-flex align-items-center">
+                  <label class="mb-0 mr-2" style="min-width: 200px;">Course Name:</label>
+                  <select name="course_name" class="form-control" required>
+                    <option value="">-- Select --</option>
+                    <% products.forEach(product => { %>
+                      <option value="<%= product.name %>"><%= product.name %></option>
+                    <% }) %>
+                  </select>
+                  </div>
+                  <br/>
+                  <div class="form-group row">
+
+                    <div class="col">
+
+                      <!-- Date and Time -->
+                    <div class="form-group d-flex align-items-center">
+                      <label class="mb-0 mr-2" style="min-width: 200px;">Course Date and Time:</label>
+                      <input type="datetime-local" name="course_datetime" class="form-control" required>
+                    </div>
+
+                    </div>
+
+                    <div class="col">
+                      <!-- Duration -->
+                    <div class="form-group d-flex align-items-center">
+                      <label class="mb-0 mr-2" style="min-width: 200px;">Course Duration (hours):</label>
+                      <input type="number" name="course_duration" class="form-control" required>
+                    </div>
+                    </div>
+
+                  </div>
+                    
+                  </div>
+                  
+                <br/>
+                  <div class="form-group row" >
+                  <!-- Tutor Name -->
+                <div class="form-group d-flex align-items-center">
+                <label class="mb-0 mr-2" style="min-width: 200px;">Tutor Name:</label>
+                <select name="tutor_name" id="tutorName" class="form-control col-form-label-lg " required>
+                  <option value="">-- Select --</option>
+                <% tutors.forEach(tutor => { %>
+                   <option value="<%= tutor.first_name %> <%= tutor.last_name %>"><%= tutor.first_name %> <%= tutor.last_name %></option>
+                <% }) %>
+                </select>
+                </div>
+
+                  <!-- Tutor Email (auto-filled) -->
+                <div class="form-group d-flex align-items-center">
+                <label class="mb-0 mr-2" style="min-width: 200px;">Tutor Email:</label>
+                  <input type="email" name="tutor_email" id="tutorEmail" class="form-control" readonly required>
+                </div>
+
+                  </div>
+                  <br/>
+                  <div class="form-group row" >
+                      <!-- Booking Reference -->
+                  <div class="form-group d-flex align-items-center">
+                      <label class="mb-0 mr-2" style="min-width: 200px;">Booking Reference Number:</label>
+                      <input type="text" name="booking_ref" class="form-control" required>
+                    </div>
+                  </div>
+                  
+                <br/>
+                  <div class="form-group row" >
+                  <!-- Client Requestor Name -->
+                  <div class="form-group d-flex align-items-center">
+                      <label class="mb-0 mr-2" style="min-width: 200px;">Client Requestor Name:</label>
+                      <select name="client_requestor" id="clientRequestor" class="form-control" required>
+                        <option value="">-- Select --</option>
+                        <option value="Jane Smith">Jane Smith</option>
+                        <option value="John Doe">John Doe</option>
+                      </select>
+                    </div>
+                  
+                    
+                    <!-- Client Requestor Email -->
+                    <div class="form-group d-flex align-items-center">
+                      <label class="mb-0 mr-2" style="min-width: 200px;">Client Requestor Email:</label>
+                      <input type="email" name="client_requestor_email" id="clientRequestorEmail" class="form-control" readonly required>
+                    </div>
+                  </div>
+                 <br/>
+                
+                  <div class="form-group row" >
+                      <!-- Value -->
+                  <div class="form-group d-flex align-items-center">
+                      <label class="mb-0 mr-2" style="min-width: 200px;">Value(£):</label>
+                      <input type="number" name="value" class="form-control" required>
+                    </div>
+                  </div>
+                  
+                <br/>
+                  <div class="form-group row" >
+                      <!-- Completed By Name -->
+                  <div class="form-group d-flex align-items-center">
+                      <label class="mb-0 mr-2" style="min-width: 200px;">Form Completed By Name:</label>
+                      <input type="text" name="completed_by_name" class="form-control" required>
+                    </div>
+                  
+                    <!-- Completed By Email -->
+                    <div class="form-group d-flex align-items-center">
+                      <label class="mb-0 mr-2" style="min-width: 200px;">Form Completed By Email:</label>
+                      <input type="email" name="completed_by_email" class="form-control inputHubspot" required>
+                    </div>
+                  </div>
+                  
+                <br/>
+                <input type="hidden" name="submission_timestamp" id="submissionTimestamp">
+
+                  <div class="text-center">
+                    <button type="submit" class="btn btn-primary">Submit</button>
+                  </div>
+                </form>
+              
+        </div>
+      </div>
+    </div>
+  </div> 
+
+</section>
+
+<script>
+  // Tutor email map
+  const tutorEmails = {
+    <% tutors.forEach((tutor, index) => { %>
+      "<%= tutor.first_name %> <%= tutor.last_name %>": "<%= tutor.email %>"<%= index < tutors.length - 1 ? ',' : '' %>
+    <% }) %>
+  };
+
+  // Client email map 
+  // TODO (static, can be dynamic later)
+  const clientEmails = {
+    "Jane Smith": "jane.smith@client.com",
+    "John Doe": "john.doe@client.com"
+  };
+
+  // Auto-fill tutor email
+  document.getElementById('tutorName').addEventListener('change', function () {
+    document.getElementById('tutorEmail').value = tutorEmails[this.value] || '';
+  });
+
+  // Auto-fill client requestor email
+  document.getElementById('clientRequestor').addEventListener('change', function () {
+    document.getElementById('clientRequestorEmail').value = clientEmails[this.value] || '';
+  });
+</script>
+
+<script>
+  let companyMap = {};
+
+  // Auto-complete setup
+  fetch('/hubspot/companies')
+    .then(res => res.json())
+    .then(companies => {
+      const datalist = document.getElementById('subClientList');
+      companies.forEach(company => {
+        const option = document.createElement('option');
+        option.value = company.name;
+        datalist.appendChild(option);
+        companyMap[company.name] = company.id; // map name to ID
+      });
+    })
+    .catch(error => console.error("Failed to load companies:", error));
+
+  // Set hidden ID on change
+  document.getElementById('subClientInput').addEventListener('change', function () {
+    const inputVal = this.value;
+    const companyId = companyMap[inputVal];
+    document.getElementById('subClientId').value = companyId || ''; // empty if not matched
+  });
+</script>
+
+<script>
+  // Set submission date/time in ISO format (e.g., 2024-03-27T15:42:00Z)
+  document.getElementById('submissionTimestamp').value = new Date().toISOString();
+</script>
+
+
+
+
+
+
+<%- include('../../partials/footer') %>

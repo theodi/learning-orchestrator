@@ -2,8 +2,17 @@ const express = require("express");
 const router = express.Router();
 const axios = require("axios");
 const { ensureAuthenticated } = require('../middleware/auth');
+const { fetchForecastUsers } = require('../services/forecastService');
+const { fetchProductsFromHubSpot } = require('../services/hubspotService');
+const { fetchCompaniesFromHubSpot } = require('../services/hubspotService');
+const { createContact } = require('../services/hubspotService');
+const { fetchDealById } = require('../services/hubspotService');
+const { handleWebhook, verifyWebhookSignature } = require('../services/hubspotService');
+
+
 
 const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
+const HUBSPOT_WEBHOOK = process.env.HUBSPOT_WEBHOOK;
 
 router.get('/', ensureAuthenticated, function(req, res) {
     const page = {
@@ -14,44 +23,152 @@ router.get('/', ensureAuthenticated, function(req, res) {
     res.render('pages/hubspot/browse')
 });
 
-async function fetchProductsFromHubSpot() {
-    const baseUrl = "https://api.hubapi.com/crm/v3/objects/products";
-    const allProducts = [];
-    let after = null;
-    let hasMore = true;
+router.get('/form', ensureAuthenticated, async (req, res) => {
+  try {
+    const products = await fetchProductsFromHubSpot();
+    const tutors = await fetchForecastUsers();
+    const companies = await fetchCompaniesFromHubSpot();
+
+    res.locals.page = { title: "HubSpot Form" };
+    res.render('pages/hubspot/form', { products, tutors, companies });
+  } catch (error) {
+    console.error("Error loading form:", error.message);
+    res.status(500).send("Failed to load form");
+  }
+});
+
+router.get('/hubspot/deals/:id', async (req, res) => {
+  try {
+    const deal = await fetchDealById(req.params.id);
+    res.json(deal);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/companies', ensureAuthenticated, async (req, res) => {
+  try {
+    const companies = await fetchCompaniesFromHubSpot(1000); // max limit for autocomplete
+    res.json(companies);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch companies" });
+  }
+});
+
+// Handle form submission — POST /hubspot/form
+router.post('/form', ensureAuthenticated, async (req, res) => {
+  try {
+    const {
+      sub_client,
+      course_location,
+      course_name,
+      course_datetime,
+      course_duration,
+      tutor_name,
+      tutor_email,
+      booking_ref,
+      client_requestor,
+      client_requestor_email,
+      value,
+      completed_by_name,
+      completed_by_email,
+      submission_timestamp
+    } = req.body;
+
+    //Basic field validation
+    const requiredFields = {
+      sub_client,
+      course_location,
+      course_name,
+      course_datetime,
+      course_duration,
+      tutor_name,
+      tutor_email,
+      booking_ref,
+      client_requestor,
+      client_requestor_email,
+      value,
+      completed_by_name,
+      completed_by_email,
+      submission_timestamp
+    };
+
+    const missingFields = Object.entries(requiredFields)
+      .filter(([key, val]) => !val || val.trim?.() === '')
+      .map(([key]) => key);
+
+    if (missingFields.length > 0) {
+      return res.status(400).render('pages/hubspot/error', {
+        page: { title: "Validation Error" },
+        message: `Missing required fields: ${missingFields.join(', ')}`
+      });
+    }
+
+    //Prepare payload
+    const payload = { ...requiredFields };
+
+    //Send to Zapier
+    const zapierWebhookUrl = HUBSPOT_WEBHOOK;
+    let zapierResponse = null;
 
     try {
-      while (hasMore) {
-        const url = `${baseUrl}?limit=100${after ? `&after=${after}` : ''}`;
-
-        const response = await axios.get(url, {
-          headers: {
-            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        const results = response.data.results || [];
-        allProducts.push(...results.map(product => ({
-          id: product.id,
-          name: product.properties.name,
-        })));
-
-        // Check if there's more
-        if (response.data.paging && response.data.paging.next && response.data.paging.next.after) {
-          after = response.data.paging.next.after;
-        } else {
-          hasMore = false;
-        }
-      }
-
-      return allProducts;
-
+      zapierResponse = await axios.post(zapierWebhookUrl, payload);
     } catch (error) {
-      console.error("Error fetching HubSpot products:", error.response?.data || error.message);
-      throw error;
+      // Fallback logging if Zapier fails
+      console.error("Zapier webhook failed:", error.response?.data || error.message);
+      fs.appendFileSync('logs/zapier-fallback.log', JSON.stringify({ payload, error: error.message, time: new Date() }) + '\n');
     }
+
+    //Show form submission log 
+    console.log(payload);
+
+    //Show success page with submitted values
+    res.render('pages/hubspot/success', {
+      page: { title: "Form Submitted" },
+      message: "Form submitted successfully!",
+      data: payload // Pass the data to show in the view
+    });
+
+  } catch (err) {
+    console.error("Unexpected error:", err.message);
+    res.status(500).render('pages/hubspot/error', {
+      page: { title: "Error" },
+      message: "An unexpected error occurred while processing your submission."
+    });
   }
+});
+
+
+
+router.post('/hubspot/create-contact', async (req, res) => {
+  try {
+    const contact = await createContact(req.body);
+    res.json({ success: true, contact });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+
+router.post('/hubspot/webhook', (req, res) => {
+  const webhookSecret = process.env.HUBSPOT_WEBHOOK_SECRET;
+
+  // Verify the request signature
+  const isValid = verifyWebhookSignature(req, webhookSecret);
+
+  if (!isValid) {
+    console.warn('Invalid HubSpot webhook signature');
+    return res.status(403).send('Forbidden: Invalid signature');
+  }
+
+  const event = handleWebhook(req);
+
+  // Do something with the event...
+  console.log('Valid webhook received:', event);
+
+  res.status(200).send('Webhook received');
+});
 
 // GET /hubspot/courses → View list of courses in DataTable
 router.get("/products", ensureAuthenticated, async (req, res) => {
@@ -155,8 +272,6 @@ router.get("/products/:productId/deals", ensureAuthenticated, async (req, res) =
       });
     }
   });
-
-
 
 
 module.exports = router;

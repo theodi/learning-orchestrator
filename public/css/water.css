@@ -249,7 +249,24 @@ input {
   border: none;
   border-radius: 6px;
   outline: none;
+  width: 30%;
 }
+
+/* #inputHubspot {
+  color: #fff;
+  color: var(--form-text);
+  background-color: #161f27;
+  background-color: var(--background);
+  font-family: inherit;
+  font-size: inherit;
+  margin-right: 6px;
+  margin-bottom: 6px;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  outline: none;
+  width: 50%;
+} */
 
 button {
   color: #fff;

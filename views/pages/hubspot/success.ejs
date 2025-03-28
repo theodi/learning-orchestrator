@@ -1,0 +1,20 @@
+<%- include('../../partials/header') %>
+
+<section class="content-block light-grey">
+    <div class="container mt-4">
+      <div class="jumbotron">
+        <h1 class="text-primary text-center"><span class="fa fa-user"></span> Booking Success Page</h1>
+        <div class="alert alert-success" role="alert">
+          <h4><%= message %></h4>
+          <ul>
+            <% Object.entries(data).forEach(([key, val]) => { %>
+              <li><strong><%= key %>:</strong> <%= val %></li>
+            <% }) %>
+          </ul>
+          <a href="/hubspot/form" class="btn btn-primary mt-3">Submit another response</a>
+        </div>
+        </div>
+      </div>
+</section>
+
+<%- include('../../partials/footer') %>
