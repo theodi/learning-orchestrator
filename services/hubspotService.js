@@ -49,34 +49,85 @@ async function fetchProductsFromHubSpot() {
 let cachedCompanies = null;
 let lastFetched = 0;
 
-async function fetchCompaniesFromHubSpot(limit = 100) {
+async function searchCompaniesByName(term) {
   const now = Date.now();
+  const cacheKey = `search:${term.toLowerCase()}`;
   const cacheDuration = 1000 * 60 * 10; // 10 minutes
 
-  // Return cached result if fresh
-  if (cachedCompanies && now - lastFetched < cacheDuration) {
-    return cachedCompanies;
+  // Use an in-memory cache object
+  global.companySearchCache = global.companySearchCache || {};
+  const cached = global.companySearchCache[cacheKey];
+
+  if (cached && now - cached.fetched < cacheDuration) {
+    return cached.data;
   }
 
-  const url = `${HUBSPOT_BASE_URL}/crm/v3/objects/companies?limit=${limit}`;
+  const url = `${HUBSPOT_BASE_URL}/crm/v3/objects/companies/search`;
+
+  const payload = {
+    filterGroups: [
+      {
+        filters: [
+          {
+            propertyName: "name",
+            operator: "CONTAINS_TOKEN",
+            value: term
+          }
+        ]
+      }
+    ],
+    properties: ["name"],
+    limit: 100
+  };
 
   try {
-    const response = await axios.get(url, { headers });
+    const response = await axios.post(url, payload, {
+      headers: {
+        Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    const results = response.data.results.map(company => ({
+      id: company.id,
+      name: company.properties.name,
+    }));
+
+    // Cache the result
+    global.companySearchCache[cacheKey] = {
+      fetched: now,
+      data: results
+    };
+
+    return results;
+  } catch (error) {
+    console.error("Error searching companies:", error.response?.data || error.message);
+    return [];
+  }
+}
+
+
+async function fetchCompaniesFromHubSpotBatch(after = null) {
+  const baseUrl = `${HUBSPOT_BASE_URL}/crm/v3/objects/companies?limit=100${after ? `&after=${after}` : ''}`;
+
+  try {
+    const response = await axios.get(baseUrl, { headers });
+
     const companies = response.data.results.map(company => ({
       id: company.id,
       name: company.properties.name,
     }));
 
-    // Cache result
-    cachedCompanies = companies;
-    lastFetched = now;
-
-    return companies;
+    return {
+      companies,
+      nextAfter: response.data.paging?.next?.after || null
+    };
   } catch (error) {
-    console.error("Error fetching companies from HubSpot:", error.response?.data || error.message);
-    return [];
+    console.error("Error fetching companies:", error.response?.data || error.message);
+    return { companies: [], nextAfter: null };
   }
 }
+
 
 
 /**
@@ -152,8 +203,9 @@ function verifyWebhookSignature(req, secret) {
 
 module.exports = {
   fetchProductsFromHubSpot,
-  fetchCompaniesFromHubSpot,
+  fetchCompaniesFromHubSpotBatch,
   fetchDealById,
   createContact,
   handleWebhook,
+  searchCompaniesByName
 };

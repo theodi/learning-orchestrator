@@ -4,7 +4,8 @@ const axios = require("axios");
 const { ensureAuthenticated } = require('../middleware/auth');
 const { fetchForecastUsers } = require('../services/forecastService');
 const { fetchProductsFromHubSpot } = require('../services/hubspotService');
-const { fetchCompaniesFromHubSpot } = require('../services/hubspotService');
+const { fetchCompaniesFromHubSpotBatch } = require('../services/hubspotService');
+const { searchCompaniesByName } = require('../services/hubspotService');
 const { createContact } = require('../services/hubspotService');
 const { fetchDealById } = require('../services/hubspotService');
 const { handleWebhook, verifyWebhookSignature } = require('../services/hubspotService');
@@ -25,9 +26,13 @@ router.get('/', ensureAuthenticated, function(req, res) {
 
 router.get('/form', ensureAuthenticated, async (req, res) => {
   try {
+    //const { q } = req.query;
+    //if (!q) return res.status(400).json({ error: "Missing query param `q`" });
+
     const products = await fetchProductsFromHubSpot();
     const tutors = await fetchForecastUsers();
-    const companies = await fetchCompaniesFromHubSpot();
+    const companies = await fetchCompaniesFromHubSpotBatch();
+    //const companies = await searchCompaniesByName(q);
 
     res.locals.page = { title: "HubSpot Form" };
     res.render('pages/hubspot/form', { products, tutors, companies });
@@ -36,6 +41,23 @@ router.get('/form', ensureAuthenticated, async (req, res) => {
     res.status(500).send("Failed to load form");
   }
 });
+
+router.get('/companies/search', ensureAuthenticated, async (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.status(400).json({ error: "Missing query param `q`" });
+
+  try {
+    const companies = await searchCompaniesByName(q);
+    res.json(companies);
+  } catch (error) {
+    console.error("Error searching companies:", error.message);
+    res.status(500).json({ error: "Failed to search companies" });
+  }
+});
+
+
+
+
 
 router.get('/hubspot/deals/:id', async (req, res) => {
   try {
@@ -47,13 +69,17 @@ router.get('/hubspot/deals/:id', async (req, res) => {
 });
 
 router.get('/companies', ensureAuthenticated, async (req, res) => {
+  const after = req.query.after || null;
+
   try {
-    const companies = await fetchCompaniesFromHubSpot(1000); // max limit for autocomplete
-    res.json(companies);
+    const result = await fetchCompaniesFromHubSpotBatch(after);
+    res.json(result); // returns { companies: [...], nextAfter: 'abc123' }
   } catch (error) {
+    console.error("Error fetching companies:", error.message);
     res.status(500).json({ error: "Failed to fetch companies" });
   }
 });
+
 
 // Handle form submission — POST /hubspot/form
 router.post('/form', ensureAuthenticated, async (req, res) => {
