@@ -7,15 +7,13 @@
       
       <div class="row justify-content-center">
         <div class="">
-          
-              
               <form action="/hubspot/form" method="POST" id="hubspotForm" name="ODI Learning - Client Bookings">
 
   
                 <div class="form-group row">
                   <div class="form-group d-flex align-items-center"> 
                   <label for="subClientSelect" class="col-sm-3 col-form-label">Sub-client Name:</label><br/>
-                  <div style="background-color: white; width:50%;padding-top: 1%;">
+                  <div style="background-color: #fff; width:50%;padding-top: 1%;">
                     <select id="subClientSelect" name="sub_client" class="form-control" required style="background-color:white;width:100%;">
                       <option value="">-- Select --</option>
                     </select>
@@ -113,18 +111,20 @@
                   <!-- Client Requestor Name -->
                   <div class="form-group d-flex align-items-center">
                       <label class="mb-0 mr-2" style="min-width: 200px;">Client Requestor Name:</label>
-                      <select name="client_requestor" id="clientRequestor" class="form-control" required>
+                      <div style="background-color: white; width:32%;padding-top: 1%;">
+                        <select id="clientRequestorEmail" name="client_requestor_email" class="form-control" required style="background-color:white;width:100%;">
                         <option value="">-- Select --</option>
-                        <option value="Jane Smith">Jane Smith</option>
-                        <option value="John Doe">John Doe</option>
-                      </select>
+                        </select>
+                      </div>
+                      
+                    </div>
                     </div>
                   
-                    
+                    <br/>
                     <!-- Client Requestor Email -->
                     <div class="form-group d-flex align-items-center">
-                      <label class="mb-0 mr-2" style="min-width: 200px;">Client Requestor Email:</label>
-                      <input type="email" name="client_requestor_email" id="clientRequestorEmail" class="form-control" readonly required>
+                      <label class="mb-0 mr-2" style="min-width: 200px;">Client Email (selected):</label>
+                      <input type="email" id="clientRequestorEmailDisplay" class="form-control" readonly>
                     </div>
                   </div>
                  <br/>
@@ -142,13 +142,13 @@
                       <!-- Completed By Name -->
                   <div class="form-group d-flex align-items-center">
                       <label class="mb-0 mr-2" style="min-width: 200px;">Form Completed By Name:</label>
-                      <input type="text" name="completed_by_name" class="form-control" required>
+                      <input type="text" name="completed_by_name" class="form-control" value="<%= userName%>" required readonly disabled>
                     </div>
                   
                     <!-- Completed By Email -->
                     <div class="form-group d-flex align-items-center">
                       <label class="mb-0 mr-2" style="min-width: 200px;">Form Completed By Email:</label>
-                      <input type="email" name="completed_by_email" class="form-control inputHubspot" required>
+                      <input type="email" name="completed_by_email" class="form-control inputHubspot" value="<%= userEmail %>" required readonly disabled>
                     </div>
                   </div>
                   
@@ -175,21 +175,9 @@
     <% }) %>
   };
 
-  // Client email map 
-  // TODO (static, can be dynamic later)
-  const clientEmails = {
-    "Jane Smith": "jane.smith@client.com",
-    "John Doe": "john.doe@client.com"
-  };
-
   // Auto-fill tutor email
   document.getElementById('tutorName').addEventListener('change', function () {
     document.getElementById('tutorEmail').value = tutorEmails[this.value] || '';
-  });
-
-  // Auto-fill client requestor email
-  document.getElementById('clientRequestor').addEventListener('change', function () {
-    document.getElementById('clientRequestorEmail').value = clientEmails[this.value] || '';
   });
 </script>
 
@@ -262,51 +250,51 @@
   });
 </script>
 
-
-
-
 <script>
-  /* let companyMap = {};
-  let searchTimeout = null;
+  $(document).ready(function () {
+    $('#clientRequestorEmail').select2({
+      theme: 'bootstrap4',
+      placeholder: 'Search for a client...',
+      minimumInputLength: 2,
+      ajax: {
+        url: '/hubspot/contacts/search',
+        delay: 300,
+        data: function (params) {
+          return { q: params.term };
+        },
+        processResults: function (data) {
+          return {
+            results: data.map(contact => ({
+              id: contact.email, // submitted value
+              text: `${contact.first_name} ${contact.last_name}`
+            }))
+          };
+        }
+      },
+      //width: '100%'
+    });
 
-  const input = document.getElementById('subClientInput');
-  const datalist = document.getElementById('subClientList');
-  const hiddenIdField = document.getElementById('subClientId');
-
-  input.addEventListener('input', function () {
-    const query = this.value.trim();
-
-    // Do not search if input is empty or too short
-    if (query.length < 2) return;
-
-    // Debounce the search
-    if (searchTimeout) clearTimeout(searchTimeout);
-
-    searchTimeout = setTimeout(() => {
-      fetch(`/hubspot/companies/search?q=${encodeURIComponent(query)}`)
-        .then(res => res.json())
-        .then(companies => {
-          datalist.innerHTML = '';
-          companyMap = {};
-
-          companies.forEach(company => {
-            const option = document.createElement('option');
-            option.value = company.name;
-            datalist.appendChild(option);
-            companyMap[company.name] = company.id;
-          });
-        })
-        .catch(error => console.error("Company search failed:", error));
-    }, 300);
+    // Show selected email in display input
+    $('#clientRequestorEmail').on('select2:select', function (e) {
+      const selectedEmail = e.params.data.id;
+      document.getElementById('clientRequestorEmailDisplay').value = selectedEmail;
+    });
   });
-
-  // Set hidden ID only when there's a matching name
-  input.addEventListener('change', function () {
-    const selected = this.value.trim();
-    hiddenIdField.value = companyMap[selected] || '';
-  }); */
 </script>
 
+<script>
+  // Auto-fill client requestor email
+  document.addEventListener('DOMContentLoaded', function () {
+    const requestorSelect = document.getElementById('clientRequestor');
+    const emailDisplay = document.getElementById('clientRequestorEmailDisplay');
+
+    if (requestorSelect && emailDisplay) {
+      requestorSelect.addEventListener('change', function () {
+        emailDisplay.value = clientEmails[this.value] || '';
+      });
+    }
+  });
+</script>
 
 
 <script>

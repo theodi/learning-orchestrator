@@ -9,6 +9,7 @@ const { searchCompaniesByName } = require('../services/hubspotService');
 const { createContact } = require('../services/hubspotService');
 const { fetchDealById } = require('../services/hubspotService');
 const { handleWebhook, verifyWebhookSignature } = require('../services/hubspotService');
+const { searchContactsByTerm } = require('../services/hubspotService');
 
 
 
@@ -32,16 +33,20 @@ router.get('/form', ensureAuthenticated, async (req, res) => {
     const products = await fetchProductsFromHubSpot();
     const tutors = await fetchForecastUsers();
     const companies = await fetchCompaniesFromHubSpotBatch();
+    const userName = req.user?.displayName || '';
+    const userEmail = req.user?.emails?.[0]?.value || '';
+
     //const companies = await searchCompaniesByName(q);
 
     res.locals.page = { title: "HubSpot Form" };
-    res.render('pages/hubspot/form', { products, tutors, companies });
+    res.render('pages/hubspot/form', { products, tutors, companies, userEmail, userName });
   } catch (error) {
     console.error("Error loading form:", error.message);
     res.status(500).send("Failed to load form");
   }
 });
 
+//Search for company by name
 router.get('/companies/search', ensureAuthenticated, async (req, res) => {
   const { q } = req.query;
   if (!q) return res.status(400).json({ error: "Missing query param `q`" });
@@ -52,6 +57,20 @@ router.get('/companies/search', ensureAuthenticated, async (req, res) => {
   } catch (error) {
     console.error("Error searching companies:", error.message);
     res.status(500).json({ error: "Failed to search companies" });
+  }
+});
+
+//Search for contacts by name
+router.get('/contacts/search', ensureAuthenticated, async (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.status(400).json({ error: "Missing query param `q`" });
+
+  try {
+    const contacts = await searchContactsByTerm(q);
+    res.json(contacts);
+  } catch (error) {
+    console.error("Error searching contacts:", error.message);
+    res.status(500).json({ error: "Failed to search contacts" });
   }
 });
 

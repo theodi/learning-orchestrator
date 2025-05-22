@@ -106,6 +106,138 @@ async function searchCompaniesByName(term) {
   }
 }
 
+/**
+ * Search HubSpot contacts with pagination
+ */
+async function searchContactsByTerm(term) {
+  const now = Date.now();
+  const cacheKey = `contact-search:${term.toLowerCase()}`;
+  const cacheDuration = 1000 * 60 * 10; // 10 minutes
+
+  global.contactSearchCache = global.contactSearchCache || {};
+  const cached = global.contactSearchCache[cacheKey];
+
+  if (cached && now - cached.fetched < cacheDuration) {
+    return cached.data;
+  }
+
+  const allResults = [];
+  let after = null;
+  let hasMore = true;
+
+  try {
+    while (hasMore) {
+      const url = `${HUBSPOT_BASE_URL}/crm/v3/objects/contacts/search`;
+
+      const payload = {
+        filterGroups: [
+          {
+            filters: [
+              {
+                propertyName: "email",
+                operator: "CONTAINS_TOKEN",
+                value: term
+              }
+            ]
+          },
+          {
+            filters: [
+              {
+                propertyName: "firstname",
+                operator: "CONTAINS_TOKEN",
+                value: term
+              }
+            ]
+          },
+          {
+            filters: [
+              {
+                propertyName: "lastname",
+                operator: "CONTAINS_TOKEN",
+                value: term
+              }
+            ]
+          }
+        ],
+        properties: ["firstname", "lastname", "email"],
+        limit: 100,
+        after: after || undefined
+      };
+
+      const response = await axios.post(url, payload, {
+        headers: {
+          Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      const contacts = response.data.results.map(contact => ({
+        id: contact.id,
+        first_name: contact.properties.firstname || '',
+        last_name: contact.properties.lastname || '',
+        email: contact.properties.email || ''
+      }));
+
+      allResults.push(...contacts);
+
+      after = response.data.paging?.next?.after;
+      hasMore = !!after;
+    }
+
+    // Cache result
+    global.contactSearchCache[cacheKey] = {
+      fetched: now,
+      data: allResults
+    };
+
+    return allResults;
+  } catch (error) {
+    console.error("Error searching contacts:", error.response?.data || error.message);
+    return [];
+  }
+}
+
+/**
+ * Fetch all HubSpot contacts
+ */
+async function fetchAllHubSpotContacts() {
+  const allContacts = [];
+  let after = null;
+  let hasMore = true;
+
+  try {
+    while (hasMore) {
+      const url = `https://api.hubapi.com/crm/v3/objects/contacts?limit=100${after ? `&after=${after}` : ''}&properties=firstname,lastname,email`;
+
+      const response = await axios.get(url, {
+        headers: {
+          Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      const contacts = response.data.results || [];
+
+      allContacts.push(
+        ...contacts.map(contact => ({
+          id: contact.id,
+          first_name: contact.properties.firstname || '',
+          last_name: contact.properties.lastname || '',
+          email: contact.properties.email || ''
+        }))
+      );
+
+      after = response.data.paging?.next?.after;
+      hasMore = !!after;
+    }
+
+    return allContacts;
+  } catch (error) {
+    console.error("Error fetching HubSpot contacts:", error.response?.data || error.message);
+    return [];
+  }
+}
+
 
 async function fetchCompaniesFromHubSpotBatch(after = null) {
   const baseUrl = `${HUBSPOT_BASE_URL}/crm/v3/objects/companies?limit=100${after ? `&after=${after}` : ''}`;
@@ -207,5 +339,6 @@ module.exports = {
   fetchDealById,
   createContact,
   handleWebhook,
-  searchCompaniesByName
+  searchCompaniesByName,
+  searchContactsByTerm
 };
