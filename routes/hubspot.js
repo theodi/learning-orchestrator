@@ -99,6 +99,12 @@ router.get('/companies', ensureAuthenticated, async (req, res) => {
   }
 });
 
+//Handle form submission self-paced /hubspot/self_paced
+router.post('/self_paced', ensureAuthenticated, async (req, res) => {
+
+console.log("Submission success");
+
+});
 
 // Handle form submission — POST /hubspot/form
 router.post('/form', ensureAuthenticated, async (req, res) => {
@@ -151,6 +157,9 @@ router.post('/form', ensureAuthenticated, async (req, res) => {
 
     //Prepare payload
     const payload = { ...requiredFields };
+
+    //Show form submission log 
+    console.log(payload);
 
     //Send to Zapier
     const zapierWebhookUrl = HUBSPOT_WEBHOOK;
