@@ -102,7 +102,68 @@ router.get('/companies', ensureAuthenticated, async (req, res) => {
 //Handle form submission self-paced /hubspot/self_paced
 router.post('/self_paced', ensureAuthenticated, async (req, res) => {
 
-console.log("Submission success");
+  try {
+
+    const {
+      course_name_sp,
+      client_requestor_sp,
+      client_requestor_email_sp,
+      self_paced
+      //submission_selfpaced
+    } = req.body;
+
+    //Basic field validation
+    const requiredFields = {
+      course_name_sp,
+      client_requestor_sp,
+      client_requestor_email_sp,
+      self_paced
+      //submission_selfpaced
+    };
+
+    const missingFields = Object.entries(requiredFields)
+      .filter(([key, val]) => !val || val.trim?.() === '')
+      .map(([key]) => key);
+
+    if (missingFields.length > 0) {
+      return res.status(400).render('pages/hubspot/error', {
+        page: { title: "Validation Error" },
+        message: `Missing required fields: ${missingFields.join(', ')}`
+      });
+    }
+
+    //Prepare payload
+    const payload = { ...requiredFields };
+
+    //Show form submission log 
+    console.log(payload);
+    
+    //Send to Zapier
+    //web hook code here
+
+    //Show form submission log 
+    console.log(payload);
+
+
+    //Show success page with submitted values
+    res.render('pages/hubspot/success', {
+      page: { title: "Form Submitted" },
+      message: "Form submitted successfully!",
+      data: payload // Pass the data to show in the view
+    });
+
+
+
+  } catch (error) {
+    console.error("Unexpected error:", err.message);
+    res.status(500).render('pages/hubspot/error', {
+      page: { title: "Error" },
+      //message: "An unexpected error occurred while processing your submission."
+      message: "An unexpected error occurred while processing your submission."
+    });
+  }
+
+
 
 });
 

@@ -89,7 +89,7 @@
                       <label class="" style="">Client Requestor Name:</label>
                       <div style="background-color: white; width:32%;padding-top: 1%;">
                         <select id="clientRequestorEmail" name="client_requestor" class="" required style="background-color:white;width:100%;">
-                        <option value="">-- Select --</option>
+                        <!--<option value="">-- Select --</option>-->
                         </select>
                       </div>
                   
@@ -97,7 +97,7 @@
                     <!-- Client Requestor Email -->
                     <div class="">
                       <label class="" style="">Client Email (selected):</label>
-                      <input type="email" id="clientRequestorEmailDisplay" name="client_requestor_email" class="" readonly>
+                      <input type="email" id="clientRequestorEmailDisplay" name="client_requestor_email" class="" readonly required>
                     </div>
                  <br/>
 
@@ -136,9 +136,38 @@
 
             <form action="/hubspot/self_paced" method="POST" id="hubspotForm" name="ODI Learning - Client Bookings">
 
+              <!-- Course Name -->
+                  
+                  <label class="" style="min-width: 200px;">Course Name:</label>
+                  <select name="course_name_sp" class="" required>
+                    <option value="">-- Select --</option>
+                    <% products.forEach(product => { %>
+                      <option value="<%= product.name %>"><%= product.name %></option>
+                    <% }) %>
+                  </select>
+                  <br/>
+                  <!-- Client Requestor Name -->
+                      <label class="" style="">Client Requestor Name:</label>
+                      <div style="background-color: white; width:32%;padding-top: 1%;">
+                        <select id="clientRequestorEmail2" name="client_requestor_sp" class="" required style="background-color:white;width:100%;">
+                        <!--<option value="">-- Select --</option>-->
+                        </select>
+                      </div>
+                  
+                    <br/>
+                    <!-- Client Requestor Email -->
+                    <div class="">
+                      <label class="" style="">Client Email (selected):</label>
+                      <input type="email" id="clientRequestorEmailDisplay2" name="client_requestor_email_sp" class="" readonly required>
+                    </div>
+                 <br/>
+
+              <input type="hidden" name="self_paced" id="self_paced" value="self paced">
+              <!--<input type="hidden" name="submission_selfpaced" id="submission_selfpaced" value="">-->
               <div class="">
                     <button type="submit" class="">Submit</button>
                   </div>
+              
 
             </form>
             
@@ -240,6 +269,7 @@
     $('#clientRequestorEmail').select2({
       theme: 'bootstrap4',
       placeholder: 'Search for a client...',
+      tags: true,
       minimumInputLength: 2,
       ajax: {
         url: '/hubspot/contacts/search',
@@ -270,17 +300,108 @@
 <script>
   // Auto-fill client requestor email
   document.addEventListener('DOMContentLoaded', function () {
-    const requestorSelect = document.getElementById('clientRequestor');
-    const emailDisplay = document.getElementById('clientRequestorEmailDisplay');
+    const select = document.getElementById('clientRequestorEmail');
+    const display = document.getElementById('clientRequestorEmailDisplay');
 
-    if (requestorSelect && emailDisplay) {
-      requestorSelect.addEventListener('change', function () {
-        emailDisplay.value = clientEmails[this.value] || '';
+    if (select && display) {
+      $(select).on('select2:select', function (e) {
+        const value = e.params.data.id;
+
+        // Check for email pattern in "(email)"
+        const emailMatch = value.match(/\(([^)]+)\)$/);
+
+        if (emailMatch) {
+          display.value = emailMatch[1];
+          display.readOnly = true;
+        } else {
+          display.value = '';
+          display.readOnly = false;
+        }
+      });
+
+      // Handle manual user input (custom tag)
+      $(select).on('change', function (e) {
+        const selectedText = $(this).val();
+
+        // If no parentheses pattern, assume manual entry
+        if (!selectedText.includes('(')) {
+          display.value = '';
+          display.readOnly = false;
+        }
       });
     }
   });
 </script>
 
+<!-- Self Paced Form -->
+ <script>
+  $(document).ready(function () {
+    $('#clientRequestorEmail2').select2({
+      theme: 'bootstrap4',
+      placeholder: 'Search for a client...',
+      tags: true,
+      minimumInputLength: 2,
+      ajax: {
+        url: '/hubspot/contacts/search',
+        delay: 300,
+        data: function (params) {
+          return { q: params.term };
+        },
+        processResults: function (data) {
+          return {
+            results: data.map(contact => ({
+              id: contact.email, // submitted value
+              text: `${contact.first_name} ${contact.last_name}`
+            }))
+          };
+        }
+      },
+      //width: '100%'
+    });
+
+    // Show selected email in display input
+    $('#clientRequestorEmail2').on('select2:select', function (e) {
+      const selectedEmail = e.params.data.id;
+      document.getElementById('clientRequestorEmailDisplay2').value = selectedEmail;
+    });
+  });
+</script>
+
+<script>
+  // Auto-fill client requestor email
+  document.addEventListener('DOMContentLoaded', function () {
+    const select = document.getElementById('clientRequestorEmail2');
+    const display = document.getElementById('clientRequestorEmailDisplay2');
+
+    if (select && display) {
+      $(select).on('select2:select', function (e) {
+        const value = e.params.data.id;
+
+        // Check for email pattern in "(email)"
+        const emailMatch = value.match(/\(([^)]+)\)$/);
+
+        if (emailMatch) {
+          display.value = emailMatch[1];
+          display.readOnly = true;
+        } else {
+          display.value = '';
+          display.readOnly = false;
+        }
+      });
+
+      // Handle manual user input (custom tag)
+      $(select).on('change', function (e) {
+        const selectedText = $(this).val();
+
+        // If no parentheses pattern, assume manual entry
+        if (!selectedText.includes('(')) {
+          display.value = '';
+          display.readOnly = false;
+        }
+      });
+    }
+  });
+</script>
 
 <script>
   // Set submission date/time in ISO format (e.g., 2024-03-27T15:42:00Z)
