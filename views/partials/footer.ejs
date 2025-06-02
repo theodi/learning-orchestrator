@@ -11,11 +11,12 @@ document.addEventListener('DOMContentLoaded', () => {
     showOverlay("/glossary");
   });
   */
-  const privacyLink = document.getElementById('privacy-link');
+  
+  /* const privacyLink = document.getElementById('privacy-link');
   privacyLink.addEventListener('click', (event) => {
     event.preventDefault();
     showOverlay("/about");
-  });
+  }); */
 
   function showOverlay(link) {
     fetch(link)
