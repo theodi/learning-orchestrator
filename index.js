@@ -12,6 +12,7 @@ import passport from './passport.js'; // Import the passport module
 import authRoutes from './routes/auth.js'; // Import the authentication routes module
 
 import { ensureAuthenticated } from './middleware/auth.js';
+import { connectDB } from './config/database.js';
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -173,6 +174,9 @@ app.use("/hubspot", ensureAuthenticated, hubspotRoutes);
 import calendarRoutes from "./routes/calendar.js";
 app.use("/calendar", ensureAuthenticated, calendarRoutes);
 
+import courseBookingsRoutes from "./routes/courseBookings.js";
+app.use("/course-bookings", ensureAuthenticated, courseBookingsRoutes);
+
 // Other routes
 import HubSpotController from './controllers/HubSpotController.js';
 const hubspotController = new HubSpotController();
@@ -225,4 +229,16 @@ app.use((err, req, res, next) => {
 /* Run server */
 
 const port = process.env.PORT || 3080;
-app.listen(port , () => console.log('App listening on port ' + port));
+
+// Connect to MongoDB before starting the server
+const startServer = async () => {
+  try {
+    await connectDB();
+    app.listen(port, () => console.log('App listening on port ' + port));
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();

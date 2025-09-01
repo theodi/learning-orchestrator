@@ -111,6 +111,9 @@ h1, h2, h3, h4 {
 section {
   margin-left: 0px; /* Same as sidebar width */
 }
+strong {
+  color: var(--color-dark-blue);
+}
 .hidden {
    display: none;
 }
@@ -329,11 +332,14 @@ li {
   font-weight: 500;
   font-size: 1.125rem;
   line-height: 1.75rem;
-  padding-top: .5rem;
-  padding-bottom: .5rem;
+  padding-top: .75rem;
+  padding-bottom: .75rem;
   padding-left: 2rem;
   padding-right: 2rem;
   border: none !important;
+  background-color: var(--color-dark-blue);
+  color: var(--color-white);
+  margin: 2px 6px;
 }
 .btn:hover, button:hover, .submitButton:hover {
   background-color: var(--color-white);
@@ -724,6 +730,9 @@ height: 100%; /* Allow the paragraph to grow and center within its container */
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-gap: 1rem;
+}
+table tr {
+  min-height: 60px;
 }
 
 /* Responsive adjustments */

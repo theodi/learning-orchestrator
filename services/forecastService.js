@@ -77,6 +77,20 @@ export class ForecastService {
   }
 
   /**
+   * Get a specific project by ID
+   */
+  async getProject(projectId) {
+    try {
+      const apiUrl = this.getApiUrl('projects');
+      const response = await axios.get(`${apiUrl}/projects/${projectId}`, { headers: this.headers });
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching project:", error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Fetch Forecast projects
    */
   async fetchProjects() {

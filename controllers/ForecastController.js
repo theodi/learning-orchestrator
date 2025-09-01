@@ -88,6 +88,17 @@ export class ForecastController extends BaseController {
     }
   }
 
+  // Get specific project by ID
+  async getProjectById(req, res) {
+    try {
+      const { id } = req.params;
+      const project = await this.service.getProject(id);
+      return this.sendSuccess(res, project, 'Project fetched successfully');
+    } catch (error) {
+      return this.sendError(res, error.message);
+    }
+  }
+
   // Get schemas
   async getSchemas(req, res) {
     try {

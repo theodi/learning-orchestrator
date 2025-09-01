@@ -18,7 +18,7 @@ router.get('/companies/search', (req, res) => hubspotController.searchCompanies(
 router.get('/contacts/search', (req, res) => hubspotController.searchContacts(req, res));
 
 // Get deal by ID
-router.get('/hubspot/deals/:id', (req, res) => hubspotController.getDeal(req, res));
+router.get('/deals/:id', (req, res) => hubspotController.getDeal(req, res));
 
 // Get companies with pagination
 router.get('/companies', (req, res) => hubspotController.getCompanies(req, res));

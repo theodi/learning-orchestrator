@@ -24,6 +24,9 @@ router.delete('/tasks/:id', (req, res) => forecastController.deleteTask(req, res
 // RESTful: Create project + tasks for course
 router.post('/projects/course', (req, res) => forecastController.createCourseProject(req, res));
 
+// Get specific project by ID
+router.get('/projects/:id', (req, res) => forecastController.getProjectById(req, res));
+
 // Get schemas
 router.get('/schemas', (req, res) => forecastController.getSchemas(req, res));
 

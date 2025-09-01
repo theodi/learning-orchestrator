@@ -425,6 +425,133 @@ export class HubSpotService {
   }
 
   /**
+   * Get a specific deal by ID
+   */
+  async getDeal(dealId) {
+    try {
+      // Get the deal and its main properties
+      const dealResponse = await axios.get(
+        `${this.baseUrl}/crm/v3/objects/deals/${dealId}`,
+        {
+          headers: this.headers,
+          params: {
+            properties: [
+              'dealname',
+              'amount',
+              'closedate',
+              'pipeline',
+              'dealstage',
+              'hs_deal_stage_probability',
+              'hubspot_owner_id',
+              'description'
+            ].join(',')
+          }
+        }
+      );
+  
+      const deal = dealResponse.data;
+  
+      // --- FETCH ASSOCIATED COMPANY ---
+      try {
+        const companyAssocResponse = await axios.get(
+          `${this.baseUrl}/crm/v3/objects/deals/${dealId}/associations/companies`,
+          { headers: this.headers }
+        );
+  
+        const companyId = companyAssocResponse.data.results?.[0]?.id;
+  
+        if (companyId) {
+          const companyResponse = await axios.get(
+            `${this.baseUrl}/crm/v3/objects/companies/${companyId}`,
+            {
+              headers: this.headers,
+              params: { properties: 'name,domain,industry' }
+            }
+          );
+          deal.properties.company_details = companyResponse.data;
+        } else {
+          deal.properties.company_details = null;
+        }
+      } catch (error) {
+        console.error('Error fetching associated company:', error.message);
+        deal.properties.company_details = null;
+      }
+  
+      // --- FETCH ASSOCIATED CONTACT ---
+      try {
+        const contactAssocResponse = await axios.get(
+          `${this.baseUrl}/crm/v3/objects/deals/${dealId}/associations/contacts`,
+          { headers: this.headers }
+        );
+  
+        const contactId = contactAssocResponse.data.results?.[0]?.id;
+  
+        if (contactId) {
+          const contactResponse = await axios.get(
+            `${this.baseUrl}/crm/v3/objects/contacts/${contactId}`,
+            {
+              headers: this.headers,
+              params: { properties: 'firstname,lastname,email,phone' }
+            }
+          );
+          deal.properties.contact_details = contactResponse.data;
+        } else {
+          deal.properties.contact_details = null;
+        }
+      } catch (error) {
+        console.error('Error fetching associated contact:', error.message);
+        deal.properties.contact_details = null;
+      }
+  
+      // --- FETCH OWNER ---
+      if (deal.properties?.hubspot_owner_id) {
+        try {
+          const ownerResponse = await axios.get(
+            `${this.baseUrl}/crm/v3/owners/${deal.properties.hubspot_owner_id}`,
+            { headers: this.headers }
+          );
+          deal.properties.owner_details = ownerResponse.data;
+        } catch (error) {
+          console.error('Error fetching owner details:', error.message);
+          deal.properties.owner_details = null;
+        }
+      }
+  
+      // --- FETCH PIPELINE + STAGE DETAILS ---
+      try {
+        const pipelinesResponse = await axios.get(
+          `${this.baseUrl}/crm/v3/pipelines/deals`,
+          { headers: this.headers }
+        );
+  
+        const pipelines = pipelinesResponse.data.results || [];
+        const pipeline = pipelines.find(p => p.id === deal.properties?.pipeline);
+        if (pipeline) {
+          deal.properties.pipeline_details = pipeline;
+  
+          const stage = pipeline.stages.find(s => s.id === deal.properties?.dealstage);
+          if (stage) {
+            deal.properties.stage_details = stage;
+          }
+        } else {
+          deal.properties.pipeline_details = null;
+          deal.properties.stage_details = null;
+        }
+      } catch (error) {
+        console.error('Error fetching pipeline details:', error.message);
+        deal.properties.pipeline_details = null;
+        deal.properties.stage_details = null;
+      }
+  
+      return deal;
+    } catch (error) {
+      console.error('Error fetching deal:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+  
+
+  /**
    * Get deals for a specific product
    */
   async getDealsForProduct(productId) {

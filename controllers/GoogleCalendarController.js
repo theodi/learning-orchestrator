@@ -1,9 +1,24 @@
+import BaseController from './BaseController.js';
 import GoogleCalendarService from '../services/googleCalendarService.js';
-import { sendSuccess, sendError } from '../utils/response.js';
 
-export default class GoogleCalendarController {
+export default class GoogleCalendarController extends BaseController {
   constructor() {
+    super();
     this.googleCalendarService = new GoogleCalendarService();
+  }
+
+  /**
+   * Get a specific calendar event by ID
+   */
+  async getEvent(req, res) {
+    try {
+      const { id } = req.params;
+      const event = await this.googleCalendarService.getEvent(id);
+      return this.sendSuccess(res, event, 'Calendar event fetched successfully');
+    } catch (error) {
+      console.error('Error in getEvent:', error);
+      return this.sendError(res, `Failed to fetch calendar event: ${error.message}`, 500);
+    }
   }
 
   /**
@@ -22,7 +37,7 @@ export default class GoogleCalendarController {
       } = req.body;
 
       // Validate required fields
-      if (!client_name || !course_name || !course_datetime || !course_location || !booking_ref || !course_duration) {
+      if (!client_name || !course_name || !course_datetime || !course_location || !course_duration) {
         return sendError(res, 'Missing required fields for calendar event creation', 400);
       }
 
@@ -38,7 +53,7 @@ export default class GoogleCalendarController {
         courseName: course_name,
         courseDate: courseDate,
         courseLocation: course_location,
-        bookingReference: booking_ref,
+        bookingReference: booking_ref || 'No reference provided',
         startTime: course_datetime,
         durationHours: parseFloat(course_duration),
         tutorEmail: tutor_email
@@ -46,15 +61,15 @@ export default class GoogleCalendarController {
 
       const event = await this.googleCalendarService.createTrainingEvent(courseData);
 
-      return sendSuccess(res, 'Calendar event created successfully', {
+      return this.sendSuccess(res, {
         id: event.id,
-        url: event.htmlLink,
+        htmlLink: event.htmlLink,
         summary: event.summary
-      });
+      }, 'Calendar event created successfully');
 
     } catch (error) {
       console.error('Error in createTrainingEvent:', error);
-      return sendError(res, `Failed to create calendar event: ${error.message}`, 500);
+      return this.sendError(res, `Failed to create calendar event: ${error.message}`, 500);
     }
   }
 
@@ -65,9 +80,9 @@ export default class GoogleCalendarController {
     try {
       // Try to get the calendar client to test authentication
       this.googleCalendarService.getCalendarClient();
-      return sendSuccess(res, 'Google Calendar service is properly configured');
+      return this.sendSuccess(res, 'Google Calendar service is properly configured');
     } catch (error) {
-      return sendError(res, `Google Calendar service not configured: ${error.message}`, 500);
+      return this.sendError(res, `Google Calendar service not configured: ${error.message}`, 500);
     }
   }
 }

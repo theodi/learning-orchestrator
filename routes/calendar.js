@@ -11,4 +11,7 @@ router.get('/test', (req, res) => googleCalendarController.testConnection(req, r
 // Create training course calendar event
 router.post('/events/training', (req, res) => googleCalendarController.createTrainingEvent(req, res));
 
+// Get specific calendar event by ID
+router.get('/events/:id', (req, res) => googleCalendarController.getEvent(req, res));
+
 export default router;

@@ -89,7 +89,7 @@ export class HubSpotController extends BaseController {
   async getDeal(req, res) {
     try {
       const { id } = req.params;
-      const deal = await this.hubspotService.fetchDealById(id);
+      const deal = await this.hubspotService.getDeal(id);
       return this.sendSuccess(res, deal);
     } catch (error) {
       return this.sendError(res, error.message);
@@ -162,7 +162,6 @@ export class HubSpotController extends BaseController {
         'course_duration',
         'tutor_name',
         'tutor_email',
-        'booking_ref',
         'client_requestor',
         'client_requestor_email',
         'value',
@@ -226,7 +225,6 @@ export class HubSpotController extends BaseController {
         'course_duration',
         'tutor_name',
         'tutor_email',
-        'booking_ref',
         'client_requestor',
         'client_requestor_email',
         'value',
@@ -388,13 +386,13 @@ export class HubSpotController extends BaseController {
     const dateString = courseDate.toISOString().split('T')[0]; // YYYY-MM-DD format
     const dealName = `Course Booking | ${formData.course_name} | ${dateString}`;
 
-    // Create description with booking reference (plain text)
+    // Create description with optional booking reference (plain text)
     const description = `Course: ${formData.course_name}
 Location: ${formData.course_location}
 Date & Time: ${formData.course_datetime}
 Duration: ${formData.course_duration} hours
 Tutor: ${formData.tutor_name} (${formData.tutor_email})
-Booking Reference: ${formData.booking_ref}
+${formData.booking_ref ? `Booking Reference: ${formData.booking_ref}` : 'Booking Reference: Not provided'}
 Completed By: ${formData.completed_by_name} (${formData.completed_by_email})`.trim();
 
     // Find the deal owner (person who submitted the form)

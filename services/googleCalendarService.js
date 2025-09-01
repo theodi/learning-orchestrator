@@ -39,6 +39,23 @@ export class GoogleCalendarService {
   }
 
   /**
+   * Get a specific calendar event by ID
+   */
+  async getEvent(eventId) {
+    try {
+      const calendar = this.getCalendarClient();
+      const response = await calendar.events.get({
+        calendarId: this.calendarId,
+        eventId: eventId
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching Google Calendar event:', error);
+      throw new Error(`Failed to fetch calendar event: ${error.message}`);
+    }
+  }
+
+  /**
    * Create a calendar event
    */
   async createEvent(eventData) {
@@ -66,7 +83,7 @@ export class GoogleCalendarService {
         },
       };
 
-             const response = await calendar.events.insert({
+       const response = await calendar.events.insert({
          calendarId: this.calendarId,
          resource: event,
          sendUpdates: this.sendInvitations ? 'all' : 'none', // Control invitation sending

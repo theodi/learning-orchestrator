@@ -1,0 +1,80 @@
+<%- include('../../partials/header') %>
+<section class="content-block light-grey">
+  <div class="container">
+    <div class="jumbotron">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-primary"><span class="fa fa-calendar"></span> Course Bookings</h1>
+        <a href="/course-bookings/new" class="btn btn-success">
+          <span class="fa fa-plus"></span> New Course Booking
+        </a>
+      </div>
+      <br/>
+
+      <!-- Bookings Table -->
+      <div class="table-responsive">
+        <table id="bookingsTable" class="table table-striped table-hover">
+          <thead>
+            <tr>
+              <th>Deal Name</th>
+              <th>Created</th>
+              <th>HubSpot</th>
+              <th>Forecast</th>
+              <th>Calendar</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% bookings.forEach(booking => { %>
+              <tr>
+                <td><%= booking.deal_name %></td>
+                <td><%= booking.created_at %></td>
+                <td><%- booking.hubspot_link %></td>
+                <td><%- booking.forecast_link %></td>
+                <td><%- booking.calendar_link %></td>
+                <td>
+                  <a href="/course-bookings/<%= booking.id %>" class="btn btn-sm btn-info">
+                    <span class="fa fa-eye"></span> More Details
+                  </a>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <% if (bookings.length === 0) { %>
+        <div class="text-center py-5">
+          <h4 class="text-muted">No course bookings found</h4>
+          <p class="text-muted">Create your first course booking to get started.</p>
+          <a href="/course-bookings/new" class="btn btn-primary">
+            <span class="fa fa-plus"></span> Create First Booking
+          </a>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</section>
+
+<script>
+$(document).ready(function() {
+  // Initialize DataTable
+  $('#bookingsTable').DataTable({
+    order: [[0, 'desc']], // Sort by ID descending (newest first)
+    pageLength: 25,
+    responsive: true,
+         columnDefs: [
+       { targets: [0, 2], width: '80px' }, // ID and Created columns
+       { targets: [1], width: '200px' }, // Deal Name column
+       { targets: [3, 4, 5], width: '120px' }, // Integration columns
+       { targets: [6], width: '120px' } // Actions column
+     ],
+    language: {
+      search: "Search bookings:",
+      lengthMenu: "Show _MENU_ bookings per page",
+      info: "Showing _START_ to _END_ of _TOTAL_ bookings"
+    }
+  });
+});
+</script>
+
+<%- include('../../partials/footer') %>
