@@ -1,27 +1,40 @@
-const path = require('path');
-const fs = require('fs');
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 //Loads the config fomr config.env to process.env (turn off prior to deployment)
-require("dotenv").config({ path: "./config.env" });
+import dotenv from "dotenv";
+dotenv.config({ path: "./.env" });
 
-const axios = require('axios');
-const express = require('express');
-const session = require('express-session');
-const passport = require('./passport'); // Require the passport module
-const authRoutes = require('./routes/auth'); // Require the authentication routes module
+import axios from 'axios';
+import express from 'express';
+import session from 'express-session';
+import passport from './passport.js'; // Import the passport module
+import authRoutes from './routes/auth.js'; // Import the authentication routes module
 
-const { ensureAuthenticated } = require('./middleware/auth');
+import { ensureAuthenticated } from './middleware/auth.js';
+
+// Get __dirname equivalent for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.set('view engine', 'ejs');
 
 // Session configuration
 app.use(session({
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false, // Only create sessions for authenticated users
   secret: process.env.SESSION_SECRET,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // Only use HTTPS in production
+    httpOnly: true, // Prevent XSS access to cookies
+    sameSite: 'lax', // Allow cross-site requests for OAuth callbacks
+    maxAge: 24 * 60 * 60 * 1000 // 24 hour session timeout
+  },
+  name: 'odi-session' // Change default session cookie name
 }));
 
 // Initialize Passport.js
@@ -63,6 +76,20 @@ app.use((req, res, next) => {
   next();
 });
 
+// Security headers and middleware
+app.use((req, res, next) => {
+  // Security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // Remove server information
+  res.removeHeader('X-Powered-By');
+  
+  next();
+});
+
 /* Setup public directory
  * Everything in her does not require authentication */
 
@@ -70,6 +97,57 @@ app.use(express.static(__dirname + '/public'));
 
 // Use authentication routes
 app.use('/auth', authRoutes);
+
+// Basic rate limiting for authentication endpoints
+app.use('/auth', (req, res, next) => {
+  const clientIP = req.ip || req.connection.remoteAddress;
+  const now = Date.now();
+  
+  // Simple in-memory rate limiting (for development)
+  if (!req.app.locals.rateLimit) {
+    req.app.locals.rateLimit = new Map();
+  }
+  
+  const clientData = req.app.locals.rateLimit.get(clientIP) || { count: 0, resetTime: now + 15 * 60 * 1000 };
+  
+  if (now > clientData.resetTime) {
+    clientData.count = 1;
+    clientData.resetTime = now + 15 * 60 * 1000;
+  } else {
+    clientData.count++;
+  }
+  
+  req.app.locals.rateLimit.set(clientIP, clientData);
+  
+  if (clientData.count > 100) { // 100 requests per 15 minutes
+    return res.status(429).json({ error: 'Too many requests' });
+  }
+  
+  next();
+});
+
+// Basic input sanitization middleware
+app.use((req, res, next) => {
+  // Sanitize query parameters
+  if (req.query) {
+    Object.keys(req.query).forEach(key => {
+      if (typeof req.query[key] === 'string') {
+        req.query[key] = req.query[key].trim().replace(/[<>]/g, '');
+      }
+    });
+  }
+  
+  // Sanitize body parameters (for non-file uploads)
+  if (req.body && req.headers['content-type'] !== 'multipart/form-data') {
+    Object.keys(req.body).forEach(key => {
+      if (typeof req.body[key] === 'string') {
+        req.body[key] = req.body[key].trim().replace(/[<>]/g, '');
+      }
+    });
+  }
+  
+  next();
+});
 
 app.get('/', function(req, res) {
   const page = {
@@ -86,86 +164,20 @@ app.use('/private', ensureAuthenticated);
 app.use('/private', express.static(__dirname + '/private'));
 
 // Import Routes
-const forecastRoutes = require("./routes/forecast");
+import forecastRoutes from "./routes/forecast.js";
 app.use("/forecast", ensureAuthenticated, forecastRoutes);
 
-const hubspotRoutes = require("./routes/hubspot");
+import hubspotRoutes from "./routes/hubspot.js";
 app.use("/hubspot", ensureAuthenticated, hubspotRoutes);
 
+import calendarRoutes from "./routes/calendar.js";
+app.use("/calendar", ensureAuthenticated, calendarRoutes);
+
 // Other routes
-app.post('/webhooks/form', async (req, res) => {
-  // Extract the API key from headers or query parameters
-  const apiKey = req.headers['x-api-key'] || req.query.api_key;
+import HubSpotController from './controllers/HubSpotController.js';
+const hubspotController = new HubSpotController();
 
-  // Validate the API key
-  if (!apiKey || apiKey !== process.env.WEBHOOK_API_KEY) {
-    return res.status(403).json({ error: "Forbidden: Invalid API key" });
-  }
-
-  // Extract project ID from query parameters
-  const { project_id } = req.query;
-
-  // Validate project_id
-  if (!project_id || isNaN(parseInt(project_id))) {
-    return res.status(400).json({ error: "Invalid or missing project_id" });
-  }
-
-  // Extract HubSpot webhook payload
-  const {
-    hs_form_title,
-    hs_form_id,
-    role,
-    email,
-    label,
-    last_name,
-    first_name,
-    organisation
-  } = req.body;
-
-  // Validate required fields
-  if (!hs_form_title || !hs_form_id || !first_name || !last_name || !email) {
-    return res.status(400).json({ error: "Missing required fields in webhook payload" });
-  }
-
-  // Construct the link using hs_form_id
-  const portalId = "748510"; // Replace with your actual HubSpot portal ID
-  const formSubmissionLink = `https://app.hubspot.com/submissions/${portalId}/form/${hs_form_id}/submissions`;
-
-  // Prepare the task data for the Forecast API
-  const taskData = {
-    title: `${first_name} ${last_name} | ${hs_form_title}`,
-    description: `
-      <strong>Form:</strong> ${hs_form_title}<br/>
-      <strong>Name:</strong> ${first_name} ${last_name}<br/>
-      <strong>Email:</strong> ${email}<br/>
-      <strong>Organisation:</strong> ${organisation}<br/>
-      <strong>Role:</strong> ${role || "Not provided"}<br/>
-      <strong>Label:</strong> ${label || "Not provided"}<br/>
-      <strong>Submission Link:</strong> <a href="${formSubmissionLink}" target="_blank">${formSubmissionLink}</a>
-    `.trim(),
-    project_id: parseInt(project_id), // Convert to integer
-    approved: true // Default to approved
-  };
-
-  try {
-    // Send the task data to the Forecast API
-    const forecastApiKey = process.env.FORECAST_API_KEY;
-    const apiUrl = 'https://api.forecast.it/api/v3/tasks';
-
-    const response = await axios.post(apiUrl, taskData, {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-FORECAST-API-KEY': forecastApiKey,
-      },
-    });
-
-    // Respond with success
-    res.status(response.status).json({ success: true, data: response.data });
-  } catch (error) {
-    console.error('Error creating task in Forecast:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Failed to create task in Forecast', details: error.response?.data || error.message });
-  }
-});
+app.post('/webhooks/form', (req, res) => hubspotController.handleWebhookForm(req, res));
 
 //Keep this at the END!
 app.get('*', function(req, res, next){

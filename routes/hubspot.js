@@ -1,392 +1,47 @@
-const express = require("express");
+import express from "express";
+import { ensureAuthenticated } from '../middleware/auth.js';
+import HubSpotController from '../controllers/HubSpotController.js';
+
 const router = express.Router();
-const axios = require("axios");
-const { ensureAuthenticated } = require('../middleware/auth');
-const { fetchForecastUsers } = require('../services/forecastService');
-const { fetchProductsFromHubSpot } = require('../services/hubspotService');
-const { fetchCompaniesFromHubSpotBatch } = require('../services/hubspotService');
-const { searchCompaniesByName } = require('../services/hubspotService');
-const { createContact } = require('../services/hubspotService');
-const { fetchDealById } = require('../services/hubspotService');
-const { handleWebhook, verifyWebhookSignature } = require('../services/hubspotService');
-const { searchContactsByTerm } = require('../services/hubspotService');
+const hubspotController = new HubSpotController();
 
+// Browse page
+router.get('/', (req, res) => hubspotController.browse(req, res));
 
+// Form page
+router.get('/form', (req, res) => hubspotController.formPage(req, res));
 
-const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
-const HUBSPOT_WEBHOOK = process.env.HUBSPOT_WEBHOOK;
+// Search companies
+router.get('/companies/search', (req, res) => hubspotController.searchCompanies(req, res));
 
-router.get('/', ensureAuthenticated, function(req, res) {
-    const page = {
-        title: "Browse"
-      };
-    res.locals.page = page;
+// Search contacts
+router.get('/contacts/search', (req, res) => hubspotController.searchContacts(req, res));
 
-    res.render('pages/hubspot/browse')
-});
+// Get deal by ID
+router.get('/hubspot/deals/:id', (req, res) => hubspotController.getDeal(req, res));
 
-router.get('/form', ensureAuthenticated, async (req, res) => {
-  try {
-    //const { q } = req.query;
-    //if (!q) return res.status(400).json({ error: "Missing query param `q`" });
+// Get companies with pagination
+router.get('/companies', (req, res) => hubspotController.getCompanies(req, res));
 
-    const products = await fetchProductsFromHubSpot();
-    const tutors = await fetchForecastUsers();
-    const companies = await fetchCompaniesFromHubSpotBatch();
-    const userName = req.user?.displayName || '';
-    const userEmail = req.user?.emails?.[0]?.value || '';
+// Handle self-paced form submission
+router.post('/self_paced', (req, res) => hubspotController.handleSelfPacedSubmission(req, res));
 
-    //const companies = await searchCompaniesByName(q);
+// Handle form submission
+router.post('/form', (req, res) => hubspotController.handleFormSubmission(req, res));
 
-    res.locals.page = { title: "HubSpot Form" };
-    res.render('pages/hubspot/form', { products, tutors, companies, userEmail, userName });
-  } catch (error) {
-    console.error("Error loading form:", error.message);
-    res.status(500).send("Failed to load form");
-  }
-});
+// AJAX: Create deal
+router.post('/ajax/create-deal', (req, res) => hubspotController.createDealAjax(req, res));
 
-//Search for company by name
-router.get('/companies/search', ensureAuthenticated, async (req, res) => {
-  const { q } = req.query;
-  if (!q) return res.status(400).json({ error: "Missing query param `q`" });
+// Create contact
+router.post('/hubspot/create-contact', (req, res) => hubspotController.createContact(req, res));
 
-  try {
-    const companies = await searchCompaniesByName(q);
-    res.json(companies);
-  } catch (error) {
-    console.error("Error searching companies:", error.message);
-    res.status(500).json({ error: "Failed to search companies" });
-  }
-});
+// Handle webhook
+router.post('/hubspot/webhook', (req, res) => hubspotController.handleWebhook(req, res));
 
-//Search for contacts by name
-router.get('/contacts/search', ensureAuthenticated, async (req, res) => {
-  const { q } = req.query;
-  if (!q) return res.status(400).json({ error: "Missing query param `q`" });
+// Get products
+router.get("/products", (req, res) => hubspotController.getProducts(req, res));
 
-  try {
-    const contacts = await searchContactsByTerm(q);
-    res.json(contacts);
-  } catch (error) {
-    console.error("Error searching contacts:", error.message);
-    res.status(500).json({ error: "Failed to search contacts" });
-  }
-});
+// Get deals for product
+router.get("/products/:productId/deals", (req, res) => hubspotController.getProductDeals(req, res));
 
-
-
-
-
-router.get('/hubspot/deals/:id', async (req, res) => {
-  try {
-    const deal = await fetchDealById(req.params.id);
-    res.json(deal);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/companies', ensureAuthenticated, async (req, res) => {
-  const after = req.query.after || null;
-
-  try {
-    const result = await fetchCompaniesFromHubSpotBatch(after);
-    res.json(result); // returns { companies: [...], nextAfter: 'abc123' }
-  } catch (error) {
-    console.error("Error fetching companies:", error.message);
-    res.status(500).json({ error: "Failed to fetch companies" });
-  }
-});
-
-//Handle form submission self-paced /hubspot/self_paced
-router.post('/self_paced', ensureAuthenticated, async (req, res) => {
-
-  try {
-
-    const {
-      course_name_sp,
-      client_requestor_sp,
-      client_requestor_email_sp,
-      self_paced
-      //submission_selfpaced
-    } = req.body;
-
-    //Basic field validation
-    const requiredFields = {
-      course_name_sp,
-      client_requestor_sp,
-      client_requestor_email_sp,
-      self_paced
-      //submission_selfpaced
-    };
-
-    const missingFields = Object.entries(requiredFields)
-      .filter(([key, val]) => !val || val.trim?.() === '')
-      .map(([key]) => key);
-
-    if (missingFields.length > 0) {
-      return res.status(400).render('pages/hubspot/error', {
-        page: { title: "Validation Error" },
-        message: `Missing required fields: ${missingFields.join(', ')}`
-      });
-    }
-
-    //Prepare payload
-    const payload = { ...requiredFields };
-
-    //Show form submission log 
-    console.log(payload);
-    
-    //Send to Zapier
-    //web hook code here
-
-    //Show form submission log 
-    console.log(payload);
-
-
-    //Show success page with submitted values
-    res.render('pages/hubspot/success', {
-      page: { title: "Form Submitted" },
-      message: "Form submitted successfully!",
-      data: payload // Pass the data to show in the view
-    });
-
-
-
-  } catch (error) {
-    console.error("Unexpected error:", err.message);
-    res.status(500).render('pages/hubspot/error', {
-      page: { title: "Error" },
-      //message: "An unexpected error occurred while processing your submission."
-      message: "An unexpected error occurred while processing your submission."
-    });
-  }
-
-
-
-});
-
-// Handle form submission — POST /hubspot/form
-router.post('/form', ensureAuthenticated, async (req, res) => {
-  try {
-    const {
-      sub_client,
-      course_location,
-      course_name,
-      course_datetime,
-      course_duration,
-      tutor_name,
-      tutor_email,
-      booking_ref,
-      client_requestor,
-      client_requestor_email,
-      value,
-      completed_by_name,
-      completed_by_email,
-      submission_timestamp
-    } = req.body;
-
-    //Basic field validation
-    const requiredFields = {
-      sub_client,
-      course_location,
-      course_name,
-      course_datetime,
-      course_duration,
-      tutor_name,
-      tutor_email,
-      booking_ref,
-      client_requestor,
-      client_requestor_email,
-      value,
-      completed_by_name,
-      completed_by_email,
-      submission_timestamp
-    };
-
-    const missingFields = Object.entries(requiredFields)
-      .filter(([key, val]) => !val || val.trim?.() === '')
-      .map(([key]) => key);
-
-    if (missingFields.length > 0) {
-      return res.status(400).render('pages/hubspot/error', {
-        page: { title: "Validation Error" },
-        message: `Missing required fields: ${missingFields.join(', ')}`
-      });
-    }
-
-    //Prepare payload
-    const payload = { ...requiredFields };
-
-    //Show form submission log 
-    console.log(payload);
-
-    //Send to Zapier
-    const zapierWebhookUrl = HUBSPOT_WEBHOOK;
-    let zapierResponse = null;
-
-    try {
-      zapierResponse = await axios.post(zapierWebhookUrl, payload);
-    } catch (error) {
-      // Fallback logging if Zapier fails
-      console.error("Zapier webhook failed:", error.response?.data || error.message);
-      fs.appendFileSync('logs/zapier-fallback.log', JSON.stringify({ payload, error: error.message, time: new Date() }) + '\n');
-    }
-
-    //Show form submission log 
-    console.log(payload);
-
-    //Show success page with submitted values
-    res.render('pages/hubspot/success', {
-      page: { title: "Form Submitted" },
-      message: "Form submitted successfully!",
-      data: payload // Pass the data to show in the view
-    });
-
-  } catch (err) {
-    console.error("Unexpected error:", err.message);
-    res.status(500).render('pages/hubspot/error', {
-      page: { title: "Error" },
-      message: "An unexpected error occurred while processing your submission."
-    });
-  }
-});
-
-
-
-router.post('/hubspot/create-contact', async (req, res) => {
-  try {
-    const contact = await createContact(req.body);
-    res.json({ success: true, contact });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-
-
-router.post('/hubspot/webhook', (req, res) => {
-  const webhookSecret = process.env.HUBSPOT_WEBHOOK_SECRET;
-
-  // Verify the request signature
-  const isValid = verifyWebhookSignature(req, webhookSecret);
-
-  if (!isValid) {
-    console.warn('Invalid HubSpot webhook signature');
-    return res.status(403).send('Forbidden: Invalid signature');
-  }
-
-  const event = handleWebhook(req);
-
-  // Do something with the event...
-  console.log('Valid webhook received:', event);
-
-  res.status(200).send('Webhook received');
-});
-
-// GET /hubspot/courses → View list of courses in DataTable
-router.get("/products", ensureAuthenticated, async (req, res) => {
-  try {
-    const data = await fetchProductsFromHubSpot();
-    res.locals.page = { title: "HubSpot Products" };
-    res.locals.type = "products";
-    res.render("pages/forecast/datatable", { data, type: "products" });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch courses", details: error.message });
-  }
-});
-
-router.get("/products/:productId/deals", ensureAuthenticated, async (req, res) => {
-    const productId = req.params.productId;
-
-    try {
-      // Step 1: Search for line items referencing this product
-      const searchResponse = await axios.post(
-        "https://api.hubapi.com/crm/v3/objects/line_items/search",
-        {
-          filterGroups: [
-            {
-              filters: [
-                {
-                  propertyName: "hs_product_id",
-                  operator: "EQ",
-                  value: productId
-                }
-              ]
-            }
-          ],
-          properties: ["name", "hs_product_id", "price", "quantity"],
-          limit: 100
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-            "Content-Type": "application/json"
-          }
-        }
-      );
-
-      const lineItems = searchResponse.data.results || [];
-
-      if (lineItems.length === 0) {
-        return res.render("pages/forecast/datatable", {
-          data: [],
-          type: "deals",
-          page: { title: `No deals found for product ${productId}` },
-          hubspotPortalId: process.env.HUBSPOT_PORTAL_ID
-        });
-      }
-
-      // Step 2: For each line item, get associated deals
-      const dealIds = new Set();
-
-      await Promise.all(
-        lineItems.map(async (item) => {
-          const assocRes = await axios.get(
-            `https://api.hubapi.com/crm/v3/objects/line_items/${item.id}/associations/deals`,
-            {
-              headers: {
-                Authorization: `Bearer ${HUBSPOT_API_KEY}`
-              }
-            }
-          );
-          assocRes.data.results.forEach(d => dealIds.add(d.id));
-        })
-      );
-
-      // Step 3: Fetch deal details
-      const deals = await Promise.all(
-        Array.from(dealIds).map(async (id) => {
-          const dealRes = await axios.get(
-            `https://api.hubapi.com/crm/v3/objects/deals/${id}?properties=dealname,amount,closedate`,
-            {
-              headers: {
-                Authorization: `Bearer ${HUBSPOT_API_KEY}`
-              }
-            }
-          );
-          return {
-            id,
-            ...dealRes.data.properties
-          };
-        })
-      );
-
-      res.locals.page = { title: `Deals for Product ${productId}` };
-      res.locals.type = "deals";
-      // Pass the portal id so the view can build links to HubSpot
-      res.locals.hubspotPortalId = process.env.HUBSPOT_PORTAL_ID;
-      res.render("pages/forecast/datatable", { data: deals, type: "deals" });
-
-    } catch (error) {
-      console.error("Error fetching deals for product:", error.response?.data || error.message);
-      res.status(500).json({
-        error: "Failed to fetch deals",
-        details: error.response?.data || error.message
-      });
-    }
-  });
-
-
-module.exports = router;
+export default router;
