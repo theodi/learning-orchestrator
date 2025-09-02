@@ -177,6 +177,12 @@ app.use("/calendar", ensureAuthenticated, calendarRoutes);
 import courseBookingsRoutes from "./routes/courseBookings.js";
 app.use("/course-bookings", ensureAuthenticated, courseBookingsRoutes);
 
+import moodleRoutes from "./routes/moodle.js";
+app.use("/moodle", ensureAuthenticated, moodleRoutes);
+
+import enrollmentRoutes from "./routes/enrollments.js";
+app.use("/enrollments", ensureAuthenticated, enrollmentRoutes);
+
 // Webhooks (public, authenticated by API key inside controller)
 import webhooksRoutes from "./routes/webhooks.js";
 app.use("/webhooks", webhooksRoutes);
