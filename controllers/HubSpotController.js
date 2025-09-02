@@ -295,6 +295,7 @@ export class HubSpotController extends BaseController {
   // Handle webhook form (external)
   async handleWebhookForm(req, res) {
     try {
+      console.log('[Webhook] Incoming HubSpot form payload:', JSON.stringify({ query: req.query, body: req.body }, null, 2));
       const apiKey = req.headers['x-api-key'] || req.query.api_key;
       
       if (!validateApiKey(apiKey, process.env.WEBHOOK_API_KEY)) {
@@ -319,11 +320,19 @@ export class HubSpotController extends BaseController {
       if (validation) return validation;
 
       const taskData = this.buildTaskData(req.body, project_id);
+      console.log('[Webhook] Creating Forecast task with payload:', JSON.stringify(taskData, null, 2));
       const result = await this.forecastService.createTask(taskData);
+      console.log('[Webhook] Forecast task created:', JSON.stringify(result, null, 2));
 
-      return this.sendSuccess(res, result);
+      return this.sendSuccess(res, {
+        id: result?.id,
+        url: result?.url || null,
+        project_id: result?.project_id || taskData.project_id,
+        title: result?.title || taskData.title
+      }, 'Task created successfully', HTTP_STATUS.CREATED);
     } catch (error) {
-      return this.sendError(res, 'Failed to create task in Forecast');
+      console.error('[Webhook] Failed to create Forecast task:', error.response?.data || error.message || error);
+      return this.sendError(res, error.response?.data || 'Failed to create task in Forecast');
     }
   }
 

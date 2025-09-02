@@ -177,9 +177,9 @@ app.use("/calendar", ensureAuthenticated, calendarRoutes);
 import courseBookingsRoutes from "./routes/courseBookings.js";
 app.use("/course-bookings", ensureAuthenticated, courseBookingsRoutes);
 
-// Other routes
-import HubSpotController from './controllers/HubSpotController.js';
-const hubspotController = new HubSpotController();
+// Webhooks (public, authenticated by API key inside controller)
+import webhooksRoutes from "./routes/webhooks.js";
+app.use("/webhooks", webhooksRoutes);
 
 //Keep this at the END!
 app.get('*', function(req, res, next){
