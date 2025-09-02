@@ -1,0 +1,64 @@
+<%- include('../../partials/header') %>
+<!-- DataTables CSS/JS are globally included in header -->
+
+<section class="content-block light-grey">
+  <h1><%= type %></h1>
+  <table id="datatable" style="width:100%">
+    <thead></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<script>
+  $(document).ready(function () {
+    const type = "<%= type %>";
+    const endpoint = "<%= endpoint || '' %>" || window.location.pathname + window.location.search;
+    const hubspotPortalId = "<%= hubspotPortalId || '' %>";
+
+    function buildColumnsFromFirstRow(row) {
+      const keys = Object.keys(row || {});
+      return keys.map(function (key) {
+        return {
+          data: key,
+          title: key,
+          render: function (data, _type, rowObj) {
+            if (type === 'products' && key === 'id') {
+              return '<a href="/hubspot/products/' + rowObj.id + '/deals">' + data + '</a>';
+            }
+            if (type === 'deals' && key === 'id' && hubspotPortalId) {
+              return '<a target="_blank" href="https://app.hubspot.com/contacts/' + hubspotPortalId + '/deal/' + rowObj.id + '">' + data + '</a>';
+            }
+            return data == null ? '' : data;
+          }
+        };
+      });
+    }
+
+    $.ajax({
+      url: endpoint,
+      method: 'GET',
+      dataType: 'json',
+      headers: { 'Accept': 'application/json' }
+    }).done(function (json) {
+      const rows = json && (json.data || json) || [];
+      if (!rows.length) {
+        $('#datatable').replaceWith('<p>No ' + type + ' found.</p>');
+        return;
+      }
+
+      const columns = buildColumnsFromFirstRow(rows[0]);
+
+      $('#datatable').DataTable({
+        pageLength: 50,
+        scrollX: type === 'projects',
+        data: rows,
+        columns: columns
+      });
+    }).fail(function () {
+      $('#datatable').replaceWith('<p>Failed to load ' + type + '.</p>');
+    });
+  });
+</script>
+<%- include('../../partials/footer') %>
+
+

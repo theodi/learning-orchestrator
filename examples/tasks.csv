@@ -1,4 +1,4 @@
-title,description,project_id,parent_task_id,bug,high_priority
-Task 1,This is the first task,114,5080,TRUE,TRUE
-Task 2,This is the second task,114,5080,TRUE,TRUE
-Task 3,This is the third task,114,5080,FALSE,FALSE
+title,description,bug,high_priority,assigned_persons
+Task 1,This is the first task,TRUE,TRUE,"davetaz@theodi.org"
+Task 2,This is the second task,TRUE,TRUE,"davetaz@theodi.org,invalid@theodi.org"
+Task 3,This is the third task,FALSE,FALSE,""

@@ -76,5 +76,5 @@
       "type": "integer"
     }
   },
-  "required": ["title","description","project_id"]
+  "required": ["title","description"]
 }

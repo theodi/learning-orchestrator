@@ -1,0 +1,605 @@
+<%- include('../../partials/header') %>
+<section class="content-block light-grey">
+
+  <div class="container">
+    <div class="jumbotron">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-primary text-center"><span class="fa fa-calendar"></span> New Course Booking</h1>
+        <a href="/course-bookings" class="btn btn-secondary">
+          <span class="fa fa-arrow-left"></span> Back to Bookings
+        </a>
+      </div>
+      <br/>
+      
+      <form action="/course-bookings" method="POST" id="courseBookingForm" name="Course Booking Form">
+                
+         <!-- Pipeline -->
+         <div class="">
+          <label class="" style="min-width: 200px;">Pipeline:</label>
+          <select name="pipeline" class="" required>
+            <option value="">-- Select Pipeline --</option>
+            <% pipelines.forEach(pipeline => { %>
+              <option value="<%= pipeline.id %>" <%= pipeline.id === defaultPipelineId ? 'selected' : '' %>><%= pipeline.label %></option>
+            <% }) %>
+          </select>
+        </div>
+      
+    <br/>
+            <label for="subClientSelect" class="col-sm-3 col-form-label">Organisation Name:</label><br/>
+            <div style="background-color: #fff; width:50%;padding-top: 1%;">
+              <select id="subClientSelect" name="sub_client" class="" required style="background-color:white;width:100%;">
+                <option value="">-- Select --</option>
+              </select>
+            </div>
+            <input type="hidden" name="client_name" id="clientNameField" value="">
+            <br/>
+             <!-- Course location -->
+                <label class="" style="min-width: 200px;">Course Location:</label>
+                <div class="">
+                    <input type="radio" class="" name="course_location" value="Online" required>
+                    <label class="">Online</label>
+                </div>
+                <div class="">
+                    <input type="radio" class="" name="course_location" value="In person" required>
+                    <label class="">In Person</label>
+                </div>
+                <br/>
+                <!-- Course Name -->
+            
+            <label class="" style="min-width: 200px;">Course Name:</label>
+            <select name="course_id" id="courseNameSelect" class="" required>
+              <option value="">-- Select --</option>
+              <% products.forEach(product => { %>
+                <option value="<%= product.id %>" data-name="<%= product.name %>"><%= product.name %></option>
+              <% }) %>
+            </select>
+            <input type="hidden" name="course_name" id="courseNameDisplay" value="">
+            <br/>
+           
+
+                <!-- Date and Time -->
+                <label class="mb-0 mr-2" style="min-width: 200px;">Course Date and Time:</label>
+                <input type="datetime-local" name="course_datetime" class="" required>
+                <br/>
+             
+                <!-- Duration -->
+                <label class="" style="">Course Duration:</label>
+                <div class="d-flex align-items-center">
+                  <input type="number" name="course_duration_hours" id="courseDurationHours" class="form-control" style="width: 80px;" min="0" max="24" placeholder="0" required>
+                  <span class="mx-2">hours</span>
+                  <input type="number" name="course_duration_minutes" id="courseDurationMinutes" class="form-control" style="width: 80px;" min="0" max="59" placeholder="0">
+                  <span class="mx-2">minutes</span>
+                  <input type="hidden" name="course_duration" id="courseDurationTotal">
+                </div>
+                <small class="text-muted">Enter duration in hours and minutes (e.g., 2 hours 30 minutes)</small>
+          <br/>
+
+            <!-- Tutor Name -->
+          <label class="" style="min-width: 200px;">Tutor Name:</label>
+          <select name="tutor_name" id="tutorName" class="" required>
+            <option value="">-- Select --</option>
+          <% tutors.forEach(tutor => { %>
+             <option value="<%= tutor.first_name %> <%= tutor.last_name %>" data-id="<%= tutor.id %>"><%= tutor.first_name %> <%= tutor.last_name %></option>
+          <% }) %>
+          </select>
+          <br/>
+
+            <!-- Tutor Email (auto-filled) -->
+          <label class="" style="min-width: 200px;">Tutor Email:</label>
+            <input type="email" name="tutor_email" id="tutorEmail" class="" readonly required>
+            <input type="hidden" name="tutor_id" id="tutorId" value="">
+            <br/>
+
+                <!-- Booking Reference -->
+            <div class="">
+                <label class="" style="min-width: 200px;">Booking Reference Number (optional):</label>
+                <input type="text" name="booking_ref" class="">
+              </div>
+            
+          <br/>
+            <!-- Client Requestor Name -->
+                <label class="" style="">Client Requestor Name:</label>
+                <div style="background-color: white; width:32%;padding-top: 1%;">
+                  <select id="clientRequestorEmail" name="client_requestor" class="" required style="background-color:white;width:100%;">
+                  <!--<option value="">-- Select --</option>-->
+                  </select>
+                </div>
+                <small class="text-muted" style="font-size: 12px; margin-top: 5px; display: block;">
+                  💡 Search for existing clients or type a new name to create a new client. Existing clients will show "(Existing)" and new clients will show "(New Client)".
+                </small>
+            
+              <br/>
+              <!-- Client Requestor Email -->
+              <div class="">
+                <label class="" style="">Client Email (selected):</label>
+                <input type="email" id="clientRequestorEmailDisplay" name="client_requestor_email" class="" readonly required>
+                <input type="hidden" id="clientRequestorId" name="client_requestor_id" value="">
+              </div>
+           <br/>
+
+                <!-- Value -->
+            <div class="">
+                <label class="" style="min-width: 200px;">Value(£):</label>
+                <input type="number" name="value" class="" required>
+              </div>
+            
+          <br/>
+                <!-- Completed By Name -->
+             <div class="">
+                <label class="" style="min-width: 200px;">Form Completed By Name:</label>
+                <input type="text" name="completed_by_name" class="" value="<%= userName%>" required readonly>
+              </div>
+            
+              <!-- Completed By Email -->
+              <div class="">
+                <label class="" style="min-width: 200px;">Form Completed By Email:</label>
+                <input type="email" name="completed_by_email" class="" value="<%= userEmail %>" required readonly>
+              </div>
+            
+            
+          <br/>
+          <input type="hidden" name="submission_timestamp" id="submissionTimestamp">
+
+            <div class="">
+              <button type="submit" id="submitBtn" class="">Submit</button>
+            </div>
+
+      </form>
+      
+      <!-- Async progress table -->
+      <div id="asyncProgress" style="display:none; margin-top:20px;">
+        <h4>Submission Progress</h4>
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th>Status</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr id="step-deal">
+              <td>Creating HubSpot deal</td>
+              <td><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> In progress</td>
+              <td id="step-deal-result">&nbsp;</td>
+            </tr>
+            <tr id="step-forecast">
+              <td>Creating Forecast project</td>
+              <td><span class="text-muted">Pending</span></td>
+              <td id="step-forecast-result">&nbsp;</td>
+            </tr>
+            <tr id="step-calendar">
+              <td>Creating calendar entries</td>
+              <td><span class="text-muted">Pending</span></td>
+              <td id="step-calendar-result">&nbsp;</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script type="module">
+  /* ===========================
+     HubSpot Form Page Script
+     =========================== */
+  
+  const App = (() => {
+    /* ---------- Utilities ---------- */
+    const $id = (id) => document.getElementById(id);
+    const on = (el, evt, fn, opts) => el && el.addEventListener(evt, fn, opts);
+    const setVal = (id, v = "") => { const el = $id(id); if (el) el.value = v; };
+    const getNumber = (id) => parseInt(($id(id)?.value ?? "").trim(), 10) || 0;
+  
+    /* ---------- Server-provided data ---------- */
+    // Tutor email map (EJS renders this safely)
+    const tutorEmails = {
+      <% tutors.forEach((tutor, index) => { %>
+        "<%= tutor.first_name %> <%= tutor.last_name %>": "<%= tutor.email %>"<%= index < tutors.length - 1 ? ',' : '' %>
+      <% }) %>
+    };
+  
+    /* ---------- Feature initialisers ---------- */
+  
+    // 1) Tutor: auto-fill email + hidden ID
+    const initTutorAutoFill = () => {
+      const tutorSelect = $id('tutorName');
+      on(tutorSelect, 'change', (e) => {
+        const sel = e.currentTarget;
+        setVal('tutorEmail', tutorEmails[sel.value] || "");
+        const id = sel.options[sel.selectedIndex]?.getAttribute('data-id') || "";
+        setVal('tutorId', id);
+      });
+    };
+  
+    // 2) Course name display from data attribute on select option
+    const initCourseNameDisplay = () => {
+      const courseSelect = $id('courseNameSelect');
+      on(courseSelect, 'change', (e) => {
+        const opt = e.currentTarget.options[e.currentTarget.selectedIndex];
+        setVal('courseNameDisplay', opt?.getAttribute('data-name') || "");
+      });
+    };
+  
+    // 3) Sub-client → client name (simple mirror)
+    const initSubClientToClientName = () => {
+      const subClient = $id('subClientSelect');
+      on(subClient, 'change', (e) => {
+        const opt = e.currentTarget.options[e.currentTarget.selectedIndex];
+        setVal('clientNameField', opt?.textContent?.trim() || "");
+      });
+    };
+  
+    // 4) Duration calculator (pure + idempotent)
+    const initDurationCalculator = () => {
+      const recalc = () => {
+        const hours = getNumber('courseDurationHours');
+        const minutes = getNumber('courseDurationMinutes');
+        const total = hours + (minutes / 60);
+        setVal('courseDurationTotal', Number.isFinite(total) ? total.toFixed(2) : "");
+      };
+      on($id('courseDurationHours'), 'input', recalc);
+      on($id('courseDurationMinutes'), 'input', recalc);
+      recalc(); // run once
+    };
+  
+    // 5) Select2: Sub-client (companies) — rely on server search (no manual scroll logic)
+    const initSubClientSelect2 = () => {
+      const el = $('#subClientSelect');
+      if (!el.length || !$.fn.select2) return;
+  
+      el.select2({
+        theme: 'bootstrap4',
+        placeholder: 'Click to search company…',
+        minimumInputLength: 2,
+        ajax: {
+          url: '/hubspot/companies/search',
+          delay: 300,
+          data: (params) => ({ q: params.term ?? '' }),
+          processResults: (data) => {
+            const companies = data?.data || data || [];
+            return {
+              results: companies.map(c => ({ id: c.id, text: c.name }))
+            };
+          }
+        }
+      });
+    };
+  
+    // 6) Select2: Client requestor (contacts) with “new” tag support
+    const initClientRequestorSelect2 = () => {
+      const el = $('#clientRequestorEmail');
+      if (!el.length || !$.fn.select2) return;
+  
+      el.select2({
+        theme: 'bootstrap4',
+        placeholder: 'Search for existing client or type to create new…',
+        tags: true,
+        minimumInputLength: 2,
+        createTag: (params) => {
+          // New option allowed when user types “First Last”
+          if (/^[^\s]+\s+[^\s]+$/.test(params.term)) {
+            return { id: params.term, text: `${params.term} (New Client)`, newOption: true };
+          }
+          return null;
+        },
+        ajax: {
+          url: '/hubspot/contacts/search',
+          delay: 300,
+          data: (params) => ({ q: params.term ?? '' }),
+          processResults: (data) => {
+            const contacts = data?.data || data || [];
+            return {
+              results: contacts.map(c => ({
+                id: c.id,
+                text: `${c.first_name} ${c.last_name} (Existing)`,
+                email: c.email,
+                contactId: c.id
+              }))
+            };
+          }
+        },
+        templateResult: (d) => {
+          if (d.newOption) {
+            return $(`<span style="color:#28a745;"><i class="fa fa-plus-circle"></i> ${d.text}</span>`);
+          }
+          return d.text;
+        },
+        templateSelection: (d) => {
+          if (d.newOption) {
+            return $(`<span style="color:#28a745;">${d.text}</span>`);
+          }
+          return d.text || d.id;
+        }
+      });
+  
+      // Single, unified selection handler
+      el.on('select2:select', (e) => {
+        const d = e.params.data;
+        if (d?.newOption) {
+          setVal('clientRequestorEmailDisplay', '');
+          setVal('clientRequestorId', '');
+          showNewClientNotification(d.text);
+        } else {
+          setVal('clientRequestorEmailDisplay', d.email || '');
+          setVal('clientRequestorId', d.contactId || '');
+        }
+      });
+  
+      // Handle manual changes to keep the display editable when user free-types
+      el.on('change', () => {
+        const val = el.val();
+        if (typeof val === 'string' && !val.includes('(')) {
+          const disp = $id('clientRequestorEmailDisplay');
+          if (disp) { disp.value = ''; disp.readOnly = false; }
+        }
+      });
+    };
+  
+    // 7) Submission timestamp once on page ready
+    const initSubmissionTimestamp = () => {
+      setVal('submissionTimestamp', new Date().toISOString());
+    };
+  
+    /* ---------- UI helpers ---------- */
+    const showNewClientNotification = (clientName) => {
+      const div = document.createElement('div');
+      div.className = 'alert alert-info alert-dismissible fade show';
+      Object.assign(div.style, {
+        position: 'fixed', top: '20px', right: '20px', zIndex: '9999', minWidth: '300px'
+      });
+      div.innerHTML = `
+        <strong>🆕 New Client Created!</strong><br>
+        "${clientName}" will be created as a new client when the form is submitted.
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      `;
+      document.body.appendChild(div);
+      setTimeout(() => div.parentNode && div.remove(), 5000);
+    };
+  
+    /* ---------- Public API ---------- */
+    const init = () => {
+      // Guard against missing root elements: all inits are null-safe
+      initTutorAutoFill();
+      initCourseNameDisplay();
+      initSubClientToClientName();
+      initDurationCalculator();
+      initSubClientSelect2();
+      initClientRequestorSelect2();
+      initSubmissionTimestamp();
+    };
+  
+    return { init, showNewClientNotification };
+  })();
+  
+  /* Run once DOM is ready (safe if placed anywhere) */
+  document.addEventListener('DOMContentLoaded', App.init);
+</script>
+
+
+<script>
+  // Functional async form submission with proper step sequencing
+  (function(){
+    const form = document.querySelector('#courseBookingForm');
+    if (!form) return;
+
+    // Utility functions for UI updates
+    const updateStepStatus = (stepId, status, message = '') => {
+      const statusCell = document.querySelector(`#${stepId} td:nth-child(2)`);
+      const resultCell = document.getElementById(`${stepId}-result`);
+      
+      if (statusCell) {
+        statusCell.innerHTML = status;
+      }
+      if (resultCell && message) {
+        resultCell.innerHTML = message;
+      }
+    };
+
+    const setStepInProgress = (stepId) => {
+      updateStepStatus(stepId, '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> In progress');
+    };
+
+    const setStepSuccess = (stepId, message) => {
+      updateStepStatus(stepId, '<span class="text-success">Done</span>', message);
+    };
+
+    const setStepError = (stepId, message) => {
+      updateStepStatus(stepId, '<span class="text-danger">Failed</span>', message);
+    };
+
+    // API call wrapper with error handling
+    const apiCall = async (url, payload) => {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      const json = await response.json();
+      
+      if (!response.ok || json.success === false) {
+        const errorMessage = (json && (json.message || json.error)) || 'API call failed';
+        throw new Error(errorMessage);
+      }
+      
+      return json.data || json;
+    };
+
+
+
+    // Step 2: Create HubSpot deal
+    const createHubSpotDeal = async (payload) => {
+      setStepInProgress('step-deal');
+      
+      try {
+        const data = await apiCall('/hubspot/deals', payload);
+        const dealId = data.id;
+        const dealUrl = data.url;
+        
+        const message = dealUrl 
+          ? `Deal: <a href="${dealUrl}" target="_blank">${dealId}</a>`
+          : `Deal ID: ${dealId}`;
+        
+        setStepSuccess('step-deal', message);
+        return { dealId, dealUrl };
+      } catch (error) {
+        setStepError('step-deal', error.message);
+        throw error; // Re-throw to stop the chain
+      }
+    };
+
+    // Step 3: Create Forecast project
+    const createForecastProject = async (payload, dealUrl) => {
+      setStepInProgress('step-forecast');
+      
+      try {
+        let forecastDescription = `Booking reference: ${payload.booking_ref}`;
+        if (dealUrl && dealUrl.includes('hubspot')) {
+          forecastDescription += `\nHubspot link: ${dealUrl}`;
+        }
+
+        const forecastPayload = {
+          client_name: payload.client_name || payload.sub_client ? $('#subClientSelect option:selected').text() : '',
+          course_name: payload.course_name,
+          course_date: (payload.course_datetime || '').split('T')[0],
+          course_location: payload.course_location,
+          tutor_id: payload.tutor_id,
+          course_duration_hours: payload.course_duration,
+          budget: payload.value,
+          description: forecastDescription
+        };
+
+        const data = await apiCall('/forecast/projects/course', forecastPayload);
+        const project = data.project;
+        const projectIdForView = data.project_view_id || project?.id;
+        const tasks = data.tasks || {};
+        
+        const message = `Project ID: <a href="https://app.forecast.it/project/${projectIdForView}" target="_blank">${projectIdForView}</a>`;
+        setStepSuccess('step-forecast', message);
+        
+        return { 
+          project: project,
+          project_view_id: projectIdForView,
+          tasks: tasks
+        };
+      } catch (error) {
+        setStepError('step-forecast', error.message);
+        throw error; // Re-throw to stop the chain
+      }
+    };
+
+    // Step 4: Create Calendar event
+    const createCalendarEvent = async (payload, forecastResult) => {
+      setStepInProgress('step-calendar');
+      
+      try {
+        const deliverTaskObj = forecastResult?.tasks?.deliverTask || null;
+        const deliverId = (deliverTaskObj?.companyTaskId || deliverTaskObj?.company_task_id || deliverTaskObj?.id) || null;
+        
+
+        const calendarPayload = {
+          client_name: payload.client_name || payload.sub_client ? $('#subClientSelect option:selected').text() : '',
+          course_name: payload.course_name,
+          course_datetime: payload.course_datetime,
+          course_location: payload.course_location,
+          booking_ref: payload.booking_ref,
+          course_duration: payload.course_duration,
+          tutor_email: payload.tutor_email,
+          forecast_project_id: forecastResult?.project?.id || null,
+          forecast_project_view_id: forecastResult?.project_view_id || null,
+          forecast_deliver_task_id: deliverId
+        };
+
+        const response = await apiCall('/calendar/events/training', calendarPayload);
+        
+        // Handle the response structure from GoogleCalendarController
+        const eventUrl = response.htmlLink;
+        const eventSummary = response.summary || 'Calendar Event Created';
+        
+        const message = eventUrl 
+          ? `Event: <a href="${eventUrl}" target="_blank">${eventSummary}</a>`
+          : `Event: ${eventSummary}`;
+        
+        setStepSuccess('step-calendar', message);
+        
+        return { eventId: response.id, eventUrl: eventUrl };
+      } catch (error) {
+        setStepError('step-calendar', error.message);
+        throw error; // Re-throw to stop the chain
+      }
+    };
+
+    // Step 5: Save to local database with integration results
+    const saveToLocalDatabase = async (payload, integrationResults) => {
+      try {
+        const bookingData = {
+          ...payload,
+          hubspot_deal_id: integrationResults.deal?.dealId || null,
+          hubspot_deal_url: integrationResults.deal?.dealUrl || null,
+          forecast_project_id: integrationResults.forecast?.project?.id || null,
+          forecast_project_url: integrationResults.forecast?.project_view_id ? `https://app.forecast.it/project/${integrationResults.forecast.project_view_id}` : null,
+          google_calendar_event_id: integrationResults.calendar?.eventId || null,
+          google_calendar_url: integrationResults.calendar?.eventUrl || null
+        };
+
+        const data = await apiCall('/course-bookings', bookingData);
+        return data;
+      } catch (error) {
+        console.error('Failed to save to local database:', error);
+        // Don't throw here - we want to continue even if local save fails
+        return null;
+      }
+    };
+
+    // Main form submission handler
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = true;
+      document.getElementById('asyncProgress').style.display = 'block';
+      
+      // Reset all step statuses
+      updateStepStatus('step-deal', '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> In progress', '&nbsp;');
+      updateStepStatus('step-forecast', 'Pending', '&nbsp;');
+      updateStepStatus('step-calendar', 'Pending', '&nbsp;');
+
+      // Collect form data
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+
+      try {
+        // Execute steps sequentially - each waits for the previous
+        const dealResult = await createHubSpotDeal(payload);
+        const forecastResult = await createForecastProject(payload, dealResult.dealUrl);
+        const calendarResult = await createCalendarEvent(payload, forecastResult);
+        
+        // Save all results to local database
+        const integrationResults = {
+          deal: dealResult,
+          forecast: forecastResult,
+          calendar: calendarResult
+        };
+        
+        await saveToLocalDatabase(payload, integrationResults);
+        
+        // All steps completed successfully
+        
+        // Redirect to bookings list after successful creation
+        setTimeout(() => {
+          window.location.href = '/course-bookings';
+        }, 2000);
+        
+      } catch (error) {
+        // Error handling is done in individual step functions
+        console.error('Form submission failed:', error);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  })();
+</script>
+
+<%- include('../../partials/footer') %>

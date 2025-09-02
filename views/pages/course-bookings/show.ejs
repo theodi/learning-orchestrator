@@ -1,0 +1,252 @@
+<%- include('../../partials/header') %>
+<section class="content-block light-grey">
+  <div class="container">
+    <div class="jumbotron">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-primary"><span class="fa fa-calendar"></span> Course Booking Details</h1>
+        <div>
+
+          <a href="/course-bookings" class="btn btn-secondary">
+            <span class="fa fa-arrow-left"></span> Back to Bookings
+          </a>
+        </div>
+      </div>
+
+      <!-- Integration Sections -->
+      <div class="row">
+        <!-- HubSpot Section -->
+        <div class="col-md-4">
+          <div class="card">
+            <div class="card-header bg-primary text-white">
+              <h5 class="mb-0"><i class="fa fa-building"></i> HubSpot Deal</h5>
+            </div>
+            <div class="card-body">
+              <div id="hubspotLoading" class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="sr-only">Loading...</span>
+                </div>
+                <p class="mt-2">Loading HubSpot data...</p>
+              </div>
+              <div id="hubspotContent" style="display: none;">
+                <div id="hubspotError" class="alert alert-danger" style="display: none;"></div>
+                <div id="hubspotData">
+                  <table class="table table-sm table-borderless mb-3">
+                    <tbody>
+                      <tr><td><strong>Deal Name:</strong></td><td><span id="dealName">-</span></td></tr>
+                      <tr><td><strong>Deal Owner:</strong></td><td><span id="dealOwner">-</span></td></tr>
+                      <tr><td><strong>Company:</strong></td><td><span id="companyName">-</span></td></tr>
+                      <tr><td><strong>Contact:</strong></td><td><span id="contactName">-</span></td></tr>
+                      <tr><td><strong>Value:</strong></td><td><span id="dealValue">-</span></td></tr>
+                      <tr><td><strong>Pipeline:</strong></td><td><span id="dealPipeline">-</span></td></tr>
+                      <tr><td><strong>Stage:</strong></td><td><span id="dealStage">-</span></td></tr>
+                    </tbody>
+                  </table>
+                  <div class="text-center">
+                    <a id="hubspotLink" href="#" target="_blank" class="btn btn-sm btn-outline-primary">View in HubSpot</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Forecast Section -->
+        <div class="col-md-4">
+          <div class="card">
+            <div class="card-header bg-success text-white">
+              <h5 class="mb-0"><i class="fa fa-tasks"></i> Forecast Project</h5>
+            </div>
+            <div class="card-body">
+              <div id="forecastLoading" class="text-center">
+                <div class="spinner-border text-success" role="status">
+                  <span class="sr-only">Loading...</span>
+                </div>
+                <p class="mt-2">Loading Forecast data...</p>
+              </div>
+              <div id="forecastContent" style="display: none;">
+                <div id="forecastError" class="alert alert-danger" style="display: none;"></div>
+                <div id="forecastData">
+                  <table class="table table-sm table-borderless mb-3">
+                    <tbody>
+                      <tr><td><strong>Project Name:</strong></td><td><span id="projectName">-</span></td></tr>
+                      <tr><td><strong>Status:</strong></td><td><span id="projectStatus">-</span></td></tr>
+                      <tr><td><strong>Start Date:</strong></td><td><span id="projectStart">-</span></td></tr>
+                      <tr><td><strong>End Date:</strong></td><td><span id="projectEnd">-</span></td></tr>
+                      <tr><td><strong>Budget:</strong></td><td><span id="projectBudget">-</span></td></tr>
+                    </tbody>
+                  </table>
+                  <div class="text-center">
+                    <a id="forecastLink" href="#" target="_blank" class="btn btn-sm btn-outline-success">View in Forecast</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Google Calendar Section -->
+        <div class="col-md-4">
+          <div class="card">
+            <div class="card-header bg-info text-white">
+              <h5 class="mb-0"><i class="fa fa-calendar"></i> Google Calendar</h5>
+            </div>
+            <div class="card-body">
+              <div id="calendarLoading" class="text-center">
+                <div class="spinner-border text-info" role="status">
+                  <span class="sr-only">Loading...</span>
+                </div>
+                <p class="mt-2">Loading Calendar data...</p>
+              </div>
+              <div id="calendarContent" style="display: none;">
+                <div id="calendarError" class="alert alert-danger" style="display: none;"></div>
+                <div id="calendarData">
+                  <table class="table table-sm table-borderless mb-3">
+                    <tbody>
+                      <tr><td><strong>Event Summary:</strong></td><td><span id="eventSummary">-</span></td></tr>
+                      <tr><td><strong>Start Time:</strong></td><td><span id="eventStart">-</span></td></tr>
+                      <tr><td><strong>End Time:</strong></td><td><span id="eventEnd">-</span></td></tr>
+                      <tr><td><strong>Location:</strong></td><td><span id="eventLocation">-</span></td></tr>
+                      <tr><td><strong>Description:</strong></td><td><span id="eventDescription">-</span></td></tr>
+                    </tbody>
+                  </table>
+                  <div class="text-center">
+                    <a id="calendarLink" href="#" target="_blank" class="btn btn-sm btn-outline-info">View in Calendar</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+$(document).ready(function() {
+  const hubspotDealId = '<%= booking.hubspot_deal_id %>';
+  const forecastProjectId = '<%= booking.forecast_project_id %>';
+  const googleCalendarEventId = '<%= booking.google_calendar_event_id %>';
+
+  // Load HubSpot data
+  if (hubspotDealId) {
+    loadHubSpotData(hubspotDealId);
+  } else {
+    showNoData('hubspot', 'No HubSpot deal created');
+  }
+
+  // Load Forecast data
+  if (forecastProjectId) {
+    loadForecastData(forecastProjectId);
+  } else {
+    showNoData('forecast', 'No Forecast project created');
+  }
+
+  // Load Calendar data
+  if (googleCalendarEventId) {
+    loadCalendarData(googleCalendarEventId);
+  } else {
+    showNoData('calendar', 'No Calendar event created');
+  }
+  
+
+  // Set up external links
+  $('#hubspotLink').attr('href', '<%= booking.hubspot_deal_url %>');
+  $('#forecastLink').attr('href', '<%= booking.forecast_project_url %>');
+  $('#calendarLink').attr('href', '<%= booking.google_calendar_url %>');
+
+  function loadHubSpotData(dealId) {
+    fetch(`/hubspot/deals/${dealId}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.success && data.data) {
+          const deal = data.data;
+          $('#dealName').text(deal.properties?.dealname || 'N/A');
+          $('#companyName').text(deal.properties?.company_details?.properties?.name || 'N/A');
+          $('#contactName').text(
+            deal.properties?.contact_details?.properties?.firstname && deal.properties?.contact_details?.properties?.lastname 
+              ? `${deal.properties.contact_details.properties.firstname} ${deal.properties.contact_details.properties.lastname}`
+              : 'N/A'
+          );
+          $('#dealValue').text(deal.properties?.amount ? `£${deal.properties.amount}` : 'N/A');
+          $('#dealStage').text(deal.properties?.stage_details?.label || deal.properties?.dealstage || 'N/A');
+          $('#dealPipeline').text(deal.properties?.pipeline_details?.label || deal.properties?.pipeline || 'N/A');
+          $('#dealOwner').text(
+            deal.properties?.owner_details?.firstName && deal.properties?.owner_details?.lastName
+              ? `${deal.properties.owner_details.firstName} ${deal.properties.owner_details.lastName}`
+              : 'N/A'
+          );
+          showContent('hubspot');
+        } else {
+          showError('hubspot', 'Failed to load HubSpot data');
+        }
+      })
+      .catch(error => {
+        showError('hubspot', `Error: ${error.message}`);
+      });
+  }
+
+  function loadForecastData(projectId) {
+    fetch(`/forecast/projects/${projectId}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.success && data.data) {
+          const project = data.data;
+          $('#projectName').text(project.name || 'N/A');
+          $('#projectClient').text(project.client?.name || 'N/A');
+          $('#projectStatus').text(project.status || 'N/A');
+          $('#projectStart').text(project.start_date ? new Date(project.start_date).toLocaleDateString('en-GB') : 'N/A');
+          $('#projectEnd').text(project.end_date ? new Date(project.end_date).toLocaleDateString('en-GB') : 'N/A');
+          $('#projectBudget').text(project.budget ? `£${project.budget}` : 'N/A');
+          showContent('forecast');
+        } else {
+          showError('forecast', 'Failed to load Forecast data');
+        }
+      })
+      .catch(error => {
+        showError('forecast', `Error: ${error.message}`);
+      });
+  }
+
+  function loadCalendarData(eventId) {
+    fetch(`/calendar/events/${eventId}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.success && data.data) {
+          const event = data.data;
+          $('#eventSummary').text(event.summary || 'N/A');
+          $('#eventStart').text(event.start?.dateTime ? new Date(event.start.dateTime).toLocaleString('en-GB') : 'N/A');
+          $('#eventEnd').text(event.end?.dateTime ? new Date(event.end.dateTime).toLocaleString('en-GB') : 'N/A');
+          $('#eventLocation').text(event.location || 'N/A');
+          $('#eventDescription').text(event.description || 'N/A');
+          showContent('calendar');
+        } else {
+          showError('calendar', 'Failed to load Calendar data');
+        }
+      })
+      .catch(error => {
+        showError('calendar', `Error: ${error.message}`);
+      });
+  }
+
+  function showContent(section) {
+    $(`#${section}Loading`).hide();
+    $(`#${section}Content`).show();
+  }
+
+  function showError(section, message) {
+    $(`#${section}Loading`).hide();
+    $(`#${section}Content`).show();
+    $(`#${section}Error`).text(message).show();
+    $(`#${section}Data`).hide();
+  }
+
+  function showNoData(section, message) {
+    $(`#${section}Loading`).hide();
+    $(`#${section}Content`).show();
+    $(`#${section}Data`).html(`<p class="text-muted">${message}</p>`);
+  }
+});
+</script>
+
+<%- include('../../partials/footer') %>

@@ -1,6 +1,81 @@
 <%- include('../partials/header') %>
+
+<% if (user) { %>
+<!-- Authenticated user content -->
 <section class="content-block light-grey home-top">
-    <h1>Home</h1>
+    <h1>Welcome</h1>
+    <p>This tool helps you create course bookings, import tasks to Forecast, and browse data across HubSpot and Forecast.</p>
+
+    <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 16px;">
+        <div class="card">
+            <h3>Create Course Booking</h3>
+            <p>Set up a project, tasks, and calendar entries in one go.</p>
+            <p><a class="btn btn-lightgrey" href="/course-bookings/new">Go to form</a></p>
+        </div>
+        <div class="card">
+            <h3>Create Tasks (Import)</h3>
+            <p>Import training tasks directly into Forecast from a file.</p>
+            <p><a class="btn btn-lightgrey" href="/forecast/import">Import tasks</a></p>
+        </div>
+        <div class="card">
+            <h3>Browse Projects</h3>
+            <p>View existing Forecast projects.</p>
+            <p><a class="btn btn-lightgrey" href="/forecast/projects">Browse projects</a></p>
+        </div>
+        <div class="card">
+            <h3>Browse Products</h3>
+            <p>View HubSpot products used for bookings.</p>
+            <p><a class="btn btn-lightgrey" href="/hubspot/products">Browse products</a></p>
+        </div>
+    </div>
+
+    <hr/>
+    <h2>How it works</h2>
+    <ol>
+        <li><strong>Create Course Booking</strong>: generates Forecast project, delivery/admin tasks, and a Google Calendar event.</li>
+        <li><strong>Create Tasks (Import)</strong>: upload tasks for existing Forecast projects.</li>
+        <li><strong>Browse</strong>: explore Products (HubSpot), Projects and Labels (Forecast), and Bookings.</li>
+    </ol>
 </section>
+<% } else { %>
+<!-- Non-authenticated user content -->
+<section class="content-block light-grey home-top">
+    <div class="welcome-container">
+        <div class="welcome-logo">
+            <img src="/images/logo.svg" alt="ODI Logo">
+        </div>
+        
+        <h1>Welcome to ODI Automation Services</h1>
+        
+        <p class="welcome-description">
+            Streamline your course booking process with integrated tools for Forecast, HubSpot, and Google Calendar.
+        </p>
+        
+        <div class="login-section">
+            <a href="/auth/google" class="btn btn-primary">
+                <span class="login-icon">🔐</span>
+                Sign in with Google
+            </a>
+        </div>
+        
+        <div class="features-preview">
+            <div class="feature-card">
+                <h3>📅 Course Bookings</h3>
+                <p>Create comprehensive course bookings with integrated project management and calendar scheduling.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>📊 Task Management</h3>
+                <p>Import and manage training tasks directly in Forecast with seamless integration.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>🔍 Data Insights</h3>
+                <p>Browse and analyze data across HubSpot, Forecast, and Google Calendar platforms.</p>
+            </div>
+        </div>
+    </div>
+</section>
+<% } %>
 
 <%- include('../partials/footer') %>

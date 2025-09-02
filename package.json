@@ -3,9 +3,18 @@
   "version": "2.0.0",
   "description": "A system to help automate ODI systems, e.g. hubspot and forecast, mainly used by ODI Learning",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:config": "node tests/test-config.js",
+    "test:projects": "node tests/test-project-dropdown.js",
+    "test:email-lookup": "node tests/test-email-lookup.js",
+    "test:restful-api": "node tests/test-restful-api.js",
+    "test:task-linking": "node tests/test-task-linking.js",
+    "test:calendar-setup": "node tests/test-google-calendar-setup.js",
+    "test:all": "npm run test:config && npm run test:projects && npm run test:email-lookup && npm run test:restful-api",
+    "test:run": "node tests/run-tests.js"
   },
   "repository": {
     "type": "git",
@@ -18,15 +27,17 @@
   },
   "homepage": "https://github.com/theodi/nodejs-oauth-template/#readme",
   "dependencies": {
+    "ajv": "^8.6.1",
+    "axios": "^1.8.4",
+    "csvtojson": "^2.0.10",
+    "dotenv": "^16.0.2",
     "ejs": "^3.1.8",
     "express": "^4.18.2",
     "express-session": "^1.17.3",
+    "googleapis": "^128.0.0",
+    "mongoose": "^8.18.0",
+    "nodemon": "^3.1.9",
     "passport": "^0.6.0",
-    "passport-google-oauth": "^2.0.0",
-    "nodemon": "^2.0.19",
-    "dotenv": "^16.0.2",
-    "csvtojson": "^2.0.10",
-    "ajv": "^8.6.1",
-    "axios": "^0.24.0"
+    "passport-google-oauth20": "^2.0.0"
   }
 }

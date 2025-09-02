@@ -1,7 +1,6 @@
 <%- include('../../partials/header') %>
 
-<link rel="stylesheet" href="//cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css"/>
-<link rel="stylesheet" type="text/css" href="//cdn.datatables.net/buttons/2.2.3/css/buttons.dataTables.min.css"/>
+<link rel="stylesheet" href="/lib/DataTables/datatables.min.css"/>
 <section class="content-block light-grey">
   <h1>Import</h1>
 
@@ -11,6 +10,15 @@
             <label for="schemaType">Schema Type:</label>
             <select id="schemaType" name="schemaType"></select>
             <br>
+
+            <!-- Project dropdown for task imports -->
+            <div id="projectSelection" style="display: none;">
+                <label for="projectId">Project:</label>
+                <select id="projectId" name="projectId">
+                    <option value="">Select a project...</option>
+                </select>
+                <br>
+            </div>
 
             <label for="csvFile">CSV File:</label>
             <input type="file" id="csvFile" name="csvFile">
@@ -25,13 +33,10 @@
             <br/>
         <!--</form>-->
 </section>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.datatables.net/1.11.3/js/jquery.dataTables.min.js"></script>
-<script src="//cdn.datatables.net/buttons/2.2.3/js/dataTables.buttons.min.js"></script>
-<script src="//cdn.datatables.net/buttons/2.2.3/js/buttons.colVis.min.js"></script>
-<script src="//cdn.datatables.net/buttons/2.2.3/js/buttons.html5.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-csv/1.0.11/jquery.csv.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ajv/8.12.0/ajv7.min.js"></script>
+<script src="/lib/jquery-3.7.1.min.js"></script>
+<script src="/lib/DataTables/datatables.min.js"></script>
+<script src="/lib/jquery.csv.min.js"></script>
+<script src="/lib/ajv7.min.js"></script>
 
 <script>
     // Function to render the data table with validation status
@@ -55,33 +60,48 @@
       thead.append(headerRow);
       table.append(thead);
 
-      // Add table rows with data and validation status
-      const tbody = $('<tbody></tbody>');
-      rows.forEach(row => {
-        const tr = $('<tr></tr>');
-        columnTitles.forEach(columnTitle => {
-          const td = $('<td></td>');
-          if (columnTitle === 'description') {
-              const cellText = row.data[columnTitle].replace(/ \| /g, '<br/>')
-              td.html(cellText);
-          } else {
-              td.text(row.data[columnTitle]);
-          }
-          tr.append(td);
+              // Add table rows with data and validation status
+        const tbody = $('<tbody></tbody>');
+        rows.forEach(row => {
+          const tr = $('<tr></tr>');
+          columnTitles.forEach(columnTitle => {
+            const td = $('<td></td>');
+            if (columnTitle === 'description') {
+                const cellText = row.data[columnTitle].replace(/ \| /g, '<br/>')
+                td.html(cellText);
+            } else if (columnTitle === 'assigned_persons') {
+                // Show email lookup information
+                let cellContent = '';
+                if (row.data._emailLookupInfo) {
+                    const info = row.data._emailLookupInfo;
+                    if (info.found && info.found.length > 0) {
+                        cellContent += `<strong>Found IDs:</strong> ${info.found.join(', ')}<br>`;
+                    }
+                    if (info.notFound && info.notFound.length > 0) {
+                        cellContent += `<strong style="color: red;">Not Found:</strong> ${info.notFound.join(', ')}`;
+                    }
+                } else {
+                    cellContent = row.data[columnTitle] || '';
+                }
+                td.html(cellContent);
+            } else {
+                td.text(row.data[columnTitle]);
+            }
+            tr.append(td);
+          });
+          // Add a new cell for the validation status
+          const validationStatusCell = $('<td></td>').text(row.isValid);
+          tr.append(validationStatusCell);
+
+          const importStatusCell = $('<td id="import-'+row.id+'"></td>');
+          tr.append(importStatusCell);
+
+          const importIDCell = $('<td id="importID-'+row.id+'"></td>');
+          tr.append(importIDCell);
+
+
+          tbody.append(tr);
         });
-        // Add a new cell for the validation status
-        const validationStatusCell = $('<td></td>').text(row.isValid);
-        tr.append(validationStatusCell);
-
-        const importStatusCell = $('<td id="import-'+row.id+'"></td>');
-        tr.append(importStatusCell);
-
-        const importIDCell = $('<td id="importID-'+row.id+'"></td>');
-        tr.append(importIDCell);
-
-
-        tbody.append(tr);
-      });
       table.append(tbody);
 
       // Show the table
@@ -177,6 +197,44 @@
             }
           });
 
+          // For task imports, we don't need to validate project_id from CSV since it comes from dropdown
+          if (schemaType === 'task' && jsonObject.hasOwnProperty('project_id')) {
+            delete jsonObject.project_id;
+          }
+
+          // Handle assigned_persons email lookup for task imports
+          if (schemaType === 'task' && jsonObject.hasOwnProperty('assigned_persons') && Array.isArray(jsonObject.assigned_persons)) {
+            try {
+              // Build query string for multiple emails
+              const emailParams = jsonObject.assigned_persons.map(email => `email=${encodeURIComponent(email)}`).join('&');
+              const emailLookupResponse = await fetch(`/forecast/persons?${emailParams}`, {
+                method: 'GET',
+                headers: {
+                  'Accept': 'application/json',
+                },
+              });
+
+              if (emailLookupResponse.ok) {
+                const lookupResult = await emailLookupResponse.json();
+                if (lookupResult.success) {
+                  jsonObject.assigned_persons = lookupResult.data.personIds;
+                  // Store validation info for display
+                  jsonObject._emailLookupInfo = {
+                    found: lookupResult.data.personIds,
+                    notFound: lookupResult.data.notFoundEmails,
+                    allFound: lookupResult.data.allFound
+                  };
+                } else {
+                  console.error('Email lookup failed:', lookupResult.error);
+                }
+              } else {
+                console.error('Email lookup request failed:', emailLookupResponse.status);
+              }
+            } catch (error) {
+              console.error('Error during email lookup:', error);
+            }
+          }
+
           const isValidRow = validateRow(jsonObject, schema);
           validatedRows.push({ data: jsonObject, isValid: isValidRow, id: i });
         }
@@ -198,7 +256,7 @@
       return { success: true, data: responseData };
       */
       try {
-        const response = await fetch('/forecast/import?type=task', {
+        const response = await fetch('/forecast/tasks', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -221,8 +279,27 @@
     // Function to perform the import when the import button is pressed
     async function importData() {
       const selectedSchema = $('#schemaType').val();
+      const projectId = $('#projectId').val();
+      
+      // Validate project selection for task imports
+      if (selectedSchema === 'task' && !projectId) {
+        alert('Please select a project for task import.');
+        return;
+      }
+      
       for (const row of validatedRows) {
-        result = await performImport(selectedSchema,row.data);
+        // Add project_id to the data if importing tasks
+        let importData = { ...row.data };
+        if (selectedSchema === 'task' && projectId) {
+          importData.project_id = parseInt(projectId);
+        }
+        
+        // Clean up temporary email lookup info before import
+        if (importData._emailLookupInfo) {
+          delete importData._emailLookupInfo;
+        }
+        
+        result = await performImport(selectedSchema, importData);
         console.log(result);
         importStatusCell = $("#import-" + row.id);
         importIDCell = $("#importID-" + row.id);
@@ -231,12 +308,16 @@
           console.log(result.data);
           if (result.data && result.data.id) {
             // If the import was successful and the task has an ID, create a hyperlink
-            const taskUrl = `https://app.forecast.it/T${result.data.company_task_id}`;
-            const taskId = result.data.id;
-            const link = $('<a></a>').attr('href', taskUrl).text('SUCCESS');
-            link.attr('target','_blank');
-            importStatusCell.empty().append(link);
-            importIDCell.empty().html(taskId);
+            // Use the correct Forecast URL format with project and task IDs
+            const projectId = $('#projectId').val();
+            const selectedOption = $('#projectId option:selected');
+            const companyProjectId = selectedOption.attr('data-company-project-id') || projectId;
+            const taskUrl = `https://app.forecast.it/project/${companyProjectId}/task-board/T${result.data.company_task_id}`;
+            const taskId = result.data.company_task_id;
+            const taskLink = $('<a></a>').attr('href', taskUrl).text(taskId);
+            taskLink.attr('target','_blank');
+            importStatusCell.empty().html("SUCCESS");
+            importIDCell.empty().append(taskLink);
           }
         } else {
           importStatusCell.text('FAILED | '+ result.error);
@@ -268,6 +349,54 @@
         alert('Error fetching schemas. Please try again later.');
     });
 
+    // Fetch projects for the project dropdown
+    fetch('/forecast/projects', {
+        headers: {
+        'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(projects => {
+        // Extract the actual projects array from the response
+        const projectsArray = projects.data || projects;
+        window.availableProjects = projectsArray; // Store projects globally
+        const projectSelectionDiv = $('#projectSelection');
+        
+        if (projectsArray.length > 0) {
+            projectSelectionDiv.show();
+            const projectIdSelect = document.getElementById('projectId');
+            projectIdSelect.innerHTML = '<option value="">Select a project...</option>';
+            
+            projectsArray.forEach(project => {
+                const option = document.createElement('option');
+                option.value = project.id;
+                option.setAttribute('data-company-project-id', project.company_project_id);
+                option.textContent = `${project.name}`;
+                projectIdSelect.appendChild(option);
+            });
+        } else {
+            projectSelectionDiv.hide();
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching projects:', error);
+        alert('Error fetching projects. Please try again later.');
+    });
+
+    // Show/hide project dropdown based on schema type
+    $('#schemaType').change(function() {
+        const selectedSchema = $(this).val();
+        const projectSelectionDiv = $('#projectSelection');
+        
+        if (selectedSchema === 'task') {
+            projectSelectionDiv.show();
+        } else {
+            projectSelectionDiv.hide();
+        }
+    });
+
+
+
     // Submit form event listener
     $('#csvFile').change(async () => {
       const selectedSchema = $('#schemaType').val();
@@ -276,6 +405,14 @@
       if (!csvFile) {
         alert('Please select a CSV file.');
         return;
+      }
+
+      // Show/hide project dropdown based on schema type
+      const projectSelectionDiv = $('#projectSelection');
+      if (selectedSchema === 'task') {
+        projectSelectionDiv.show();
+      } else {
+        projectSelectionDiv.hide();
       }
 
       const reader = new FileReader();
