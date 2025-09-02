@@ -33,12 +33,17 @@ export default class GoogleCalendarController extends BaseController {
         course_location,
         booking_ref,
         course_duration,
-        tutor_email
+        tutor_email,
+        forecast_project_id,
+        forecast_project_view_id,
+        forecast_deliver_task_id
       } = req.body;
+
+      
 
       // Validate required fields
       if (!client_name || !course_name || !course_datetime || !course_location || !course_duration) {
-        return sendError(res, 'Missing required fields for calendar event creation', 400);
+        return this.sendError(res, 'Missing required fields for calendar event creation', 400);
       }
 
       // Format course date for event summary
@@ -56,8 +61,13 @@ export default class GoogleCalendarController extends BaseController {
         bookingReference: booking_ref || 'No reference provided',
         startTime: course_datetime,
         durationHours: parseFloat(course_duration),
-        tutorEmail: tutor_email
+        tutorEmail: tutor_email,
+        forecastProjectId: forecast_project_id,
+        forecastProjectViewId: forecast_project_view_id,
+        forecastDeliverTaskId: forecast_deliver_task_id
       };
+
+      
 
       const event = await this.googleCalendarService.createTrainingEvent(courseData);
 

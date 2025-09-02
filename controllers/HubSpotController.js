@@ -20,39 +20,6 @@ export class HubSpotController extends BaseController {
     });
   }
 
-  // Form page
-  async formPage(req, res) {
-    try {
-      const products = await this.hubspotService.fetchProducts();
-      const tutors = await this.forecastService.fetchUsers();
-      const companies = await this.hubspotService.fetchCompaniesBatch();
-      
-      let pipelines = [];
-      try {
-        pipelines = await this.hubspotService.fetchPipelines();
-      } catch (pipelineError) {
-        console.error('Failed to fetch pipelines:', pipelineError.message);
-        // Continue without pipelines if they can't be fetched
-      }
-      
-      const userName = req.user?.displayName || '';
-      const userEmail = req.user?.emails?.[0]?.value || '';
-
-      return this.renderPage(req, res, 'pages/hubspot/form', {
-        title: 'HubSpot Form',
-        products,
-        tutors,
-        companies,
-        pipelines,
-        defaultPipelineId: HUBSPOT_CONFIG.DEFAULT_PIPELINE_ID,
-        userEmail,
-        userName
-      });
-    } catch (error) {
-      return this.sendError(res, 'Failed to load form');
-    }
-  }
-
   // Search companies
   async searchCompanies(req, res) {
     try {
@@ -286,11 +253,17 @@ export class HubSpotController extends BaseController {
   // Get products
   async getProducts(req, res) {
     try {
-      const data = await this.hubspotService.fetchProducts();
-      return this.renderPage(req, res, 'pages/forecast/datatable', {
+      const acceptHeader = req.get('accept') || '';
+      if (acceptHeader.includes('application/json')) {
+        const data = await this.hubspotService.fetchProducts();
+        return this.sendSuccess(res, data);
+      }
+
+      return this.renderPage(req, res, 'pages/hubspot/index', {
         title: 'HubSpot Products',
-        data,
-        type: 'products'
+        data: [],
+        type: 'products',
+        endpoint: '/hubspot/products'
       });
     } catch (error) {
       return this.sendError(res, 'Failed to fetch products');
@@ -301,22 +274,18 @@ export class HubSpotController extends BaseController {
   async getProductDeals(req, res) {
     try {
       const { productId } = req.params;
-      const deals = await this.hubspotService.getDealsForProduct(productId);
-
-      if (deals.length === 0) {
-        return this.renderPage(req, res, 'pages/forecast/datatable', {
-          title: `No deals found for product ${productId}`,
-          data: [],
-          type: 'deals',
-          hubspotPortalId: process.env.HUBSPOT_PORTAL_ID
-        });
+      const acceptHeader = req.get('accept') || '';
+      
+      if (acceptHeader.includes('application/json')) {
+        const deals = await this.hubspotService.getDealsForProduct(productId);
+        return this.sendSuccess(res, deals);
       }
 
-      return this.renderPage(req, res, 'pages/forecast/datatable', {
+      return this.renderPage(req, res, 'pages/hubspot/index', {
         title: `Deals for Product ${productId}`,
-        data: deals,
+        data: [],
         type: 'deals',
-        hubspotPortalId: process.env.HUBSPOT_PORTAL_ID
+        endpoint: `/hubspot/products/${productId}/deals`
       });
     } catch (error) {
       return this.sendError(res, 'Failed to fetch deals');

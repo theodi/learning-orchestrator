@@ -6,6 +6,7 @@ export class Task {
     this.title = data.title;
     this.description = data.description;
     this.projectId = data.project_id || data.projectId;
+    this.companyTaskId = data.company_task_id || data.companyTaskId;
     this.assigneeId = data.person_id || data.assigneeId;
     this.status = data.status;
     this.approved = data.approved;
@@ -19,6 +20,7 @@ export class Task {
       title: data.title,
       description: data.description,
       projectId: data.project_id,
+      companyTaskId: data.company_task_id,
       assigneeId: data.person_id,
       status: data.status,
       approved: data.approved,
@@ -51,6 +53,7 @@ export class Task {
       title: this.title,
       description: this.description,
       projectId: this.projectId,
+      companyTaskId: this.companyTaskId,
       assigneeId: this.assigneeId,
       status: this.status,
       approved: this.approved,

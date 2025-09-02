@@ -114,20 +114,40 @@ export class GoogleCalendarService {
       bookingReference,
       startTime,
       durationHours,
-      tutorEmail
+      tutorEmail,
+      forecastProjectId,
+      forecastProjectViewId,
+      forecastDeliverTaskId
     } = courseData;
 
     // Calculate end time
     const startDateTime = new Date(startTime);
     const endDateTime = new Date(startDateTime.getTime() + (durationHours * 60 * 60 * 1000));
 
+    
+
+    // Build description without IDs (moved to summary)
+    const description = `Training course booking\n\nClient: ${clientName}\nCourse: ${courseName}\nLocation: ${courseLocation}\nBooking Reference: ${bookingReference}`;
+
+    // Compute ID prefix/suffix for summary
+    const taskPart = forecastDeliverTaskId ? `T${forecastDeliverTaskId} - ` : '';
+    let projectPart = '';
+    if (forecastProjectViewId) {
+      const normalizedProjectViewId = /^P-/.test(forecastProjectViewId)
+        ? forecastProjectViewId
+        : forecastProjectViewId.replace(/^P(.*)$/,'P-$1');
+      projectPart = ` [${normalizedProjectViewId}]`;
+    }
+
     const eventData = {
-      summary: `${clientName} - ${courseName} - ${courseDate} (${courseLocation}) - ${bookingReference}`,
-      description: `Training course booking\n\nClient: ${clientName}\nCourse: ${courseName}\nLocation: ${courseLocation}\nBooking Reference: ${bookingReference}`,
+      summary: `${taskPart}${clientName} - ${courseName} - ${courseDate} (${courseLocation}) - ${bookingReference}${projectPart}`,
+      description: description,
       startDateTime: startDateTime.toISOString(),
       endDateTime: endDateTime.toISOString(),
       attendees: tutorEmail ? [{ email: tutorEmail }] : [],
     };
+
+    
 
     return await this.createEvent(eventData);
   }

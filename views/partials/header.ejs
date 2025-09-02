@@ -13,12 +13,18 @@
 
 <script type="text/javascript" src="/lib/jquery-3.7.1.min.js"></script>
 
+<link href="/lib/DataTables/datatables.min.css" rel="stylesheet">
 <link href="/css/water.css" rel="stylesheet">
+<link href="/css/bootstrap.min.css" rel="stylesheet">
 <link href="/css/glyphicon.css" rel="stylesheet">
 <link href="/css/style.css" rel="stylesheet">
 <link rel="shortcut icon" href="/images/odifavicon32.ico">
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="/lib/jquery-3.7.1.min.js"></script>
+<script src="/lib/ajv7.min.js"></script>
+<script src="/lib/jquery.csv.min.js"></script>
+<script src="/lib/DataTables/datatables.min.js"></script>
+<link href="/lib/select2.min.css" rel="stylesheet" />
+<script src="/lib/select2.min.js"></script>
 </head> 
 <body>
 	<div id="contentOverlay" class="overlay">
@@ -38,15 +44,29 @@
 			<nav class="main-nav" aria-label="Main Menu">
 				<ul>
 				<% if(user) { %>
-					<li><a href="/hubspot" class="toggle-link <% if (page.link === '/hubspot') { %>selected<% } %>">Hubspot Ops</a></li>
-					<li><a href="/forecast" class="toggle-link <% if (page.link === '/forecast') { %>selected<% } %>">Forecast Ops</a></li>
+					<li class="has-submenu">
+						<span class="toggle-link">Browse</span>
+						<ul class="submenu">
+							<li><a href="/hubspot/products" class="toggle-link">Products</a></li>
+							<li><a href="/forecast/projects" class="toggle-link">Projects</a></li>
+							<li><a href="/forecast/labels" class="toggle-link">Labels</a></li>
+							<li><a href="/course-bookings" class="toggle-link">Bookings</a></li>
+						</ul>
+					</li>
+					<li class="has-submenu">
+						<span class="toggle-link">Create</span>
+						<ul class="submenu">
+							<li><a href="/course-bookings/new" class="toggle-link">Course Booking</a></li>
+							<li><a href="/forecast/import" class="toggle-link">Tasks (Import)</a></li>
+						</ul>
+					</li>
 					<% if (user.authMethod === 'google') { %>
 						<!--<li><a href="/auth/local/reset-password">View/Change local password</a></li>-->
 					<% } %>
 					<li>
 						<a style="padding: 0;" class="toggle-link <% if (page.link === '/auth/profile') { %>selected<% } %>" href="/auth/profile"><%= user ? (user.displayName || (user.first_name && user.last_name ? user.first_name + ' ' + user.last_name : user.email)) : 'Guest' %></a>
-						<form style="display: inline-flex;" id="logout_form" action="/logout" method="post">
-							 &nbsp;(<a href="javascript:;" onclick="document.getElementById('logout_form').submit();">Logout)</a>
+						<form style="display: inline-flex;" id="logout_form" action="/auth/logout" method="post">
+							<span>(<a href="javascript:;" onclick="document.getElementById('logout_form').submit();">Logout</a>)</span>
 						</form>
 					</li>
 				<% } else { %>

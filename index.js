@@ -181,8 +181,6 @@ app.use("/course-bookings", ensureAuthenticated, courseBookingsRoutes);
 import HubSpotController from './controllers/HubSpotController.js';
 const hubspotController = new HubSpotController();
 
-app.post('/webhooks/form', (req, res) => hubspotController.handleWebhookForm(req, res));
-
 //Keep this at the END!
 app.get('*', function(req, res, next){
   const page = {

@@ -142,8 +142,8 @@ strong {
 }
 .version {
   position: absolute;
-  top: -10px;
-  right: 10px;
+  top: 0px;
+  right: 20px;
 }
 .version a {
   color: white;
@@ -332,8 +332,8 @@ li {
   font-weight: 500;
   font-size: 1.125rem;
   line-height: 1.75rem;
-  padding-top: .75rem;
-  padding-bottom: .75rem;
+  padding-top: .5rem;
+  padding-bottom: .5rem;
   padding-left: 2rem;
   padding-right: 2rem;
   border: none !important;
@@ -344,6 +344,17 @@ li {
 .btn:hover, button:hover, .submitButton:hover {
   background-color: var(--color-white);
   color: var(--color-dark-blue);
+}
+
+/* Light grey button variant for dark backgrounds */
+.btn-lightgrey {
+  background-color: var(--color-light-grey) !important;
+  color: var(--color-dark-blue) !important;
+  border: 1px solid var(--color-light-grey) !important;
+}
+.btn-lightgrey:hover {
+  background-color: #f0f3f6 !important;
+  color: var(--color-dark-blue) !important;
 }
 tbody tr:nth-child(2n) button:hover {
   background-color: var(--color-white);
@@ -444,6 +455,7 @@ fieldset .form-group {
 
 .container {
   padding: 10px;
+  max-width: calc(100vw) !important;
 }
 .content-block {
   padding: 1rem 30px 2rem 30px;
@@ -495,7 +507,6 @@ fieldset .form-group {
   display: inline-flex;
   align-items: center;
   padding: 0px;
-  border-radius: 25px;
   border: none;
   text-decoration: none;
   background: none;
@@ -505,6 +516,46 @@ fieldset .form-group {
 .header .main-nav ul button:hover {
   text-decoration: underline;
   text-underline-offset: 4px; /* Adjust this value as needed */
+}
+
+/* Dropdown menus */
+.header .main-nav ul li.has-submenu {
+  position: relative;
+}
+.header .main-nav ul li.has-submenu > span.toggle-link {
+  color: var(--color-white);
+  cursor: pointer;
+}
+.header .main-nav ul li .submenu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--color-dark-blue);
+  border: 1px solid var(--color-light-grey);
+  min-width: 220px;
+  padding: 8px 0;
+  z-index: 999;
+}
+.header .main-nav ul li .submenu li {
+  padding: 0;
+}
+.header .main-nav ul li .submenu a {
+  display: block;
+  padding: 10px 16px;
+  color: var(--color-white);
+}
+.header .main-nav ul li .submenu a:hover {
+  background: rgba(255,255,255,0.1);
+  text-decoration: none;
+}
+.header .main-nav ul li.has-submenu:hover > .submenu {
+  display: block;
+}
+
+/* Touch-friendly: show submenu when focusing via keyboard */
+.header .main-nav ul li.has-submenu:focus-within > .submenu {
+  display: block;
 }
 
 @media (min-width: 768px) {
@@ -674,6 +725,25 @@ fieldset .form-group {
   margin-left: auto;
   margin-right: auto;
 }
+input {
+  width: auto;
+}
+
+/* Home cards styling */
+.home-top .card {
+  background-color: var(--color-dark-blue);
+  color: var(--color-white);
+  border: 1px solid var(--color-light-grey);
+  border-radius: 0;
+  padding: 16px;
+}
+.home-top .card h3 {
+  color: var(--color-white) !important;
+  margin-top: 0;
+}
+.home-top .card p {
+  color: var(--color-white);
+}
 .assessment-grid {
   display: flex;
   flex-wrap: wrap;
@@ -761,5 +831,112 @@ table tr {
   .main-content {
     width: 100%;
     margin-left: 0; /* Sidebar and main content take full width on smaller screens */
+  }
+}
+
+/* Home page welcome section styles */
+.welcome-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.welcome-logo {
+  margin-bottom: 40px;
+}
+
+.welcome-logo img {
+  max-width: 200px;
+  height: auto;
+  transition: transform 0.3s ease;
+}
+
+.welcome-logo img:hover {
+  transform: scale(1.05);
+}
+
+.welcome-description {
+  font-size: var(--font-size-20);
+  line-height: var(--line-height-20);
+  margin-bottom: 40px;
+  color: var(--color-dark-grey);
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.login-section {
+  margin-bottom: 40px;
+}
+
+.login-section .btn {
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  display: inline-block;
+  padding: 16px 32px;
+  font-size: var(--font-size-18);
+  font-weight: 600;
+  text-decoration: none;
+  background-color: var(--color-dark-blue);
+  color: white;
+}
+
+.login-section .btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+  background-color: var(--color-dark-blue) !important;
+  color: var(--color-white) !important;
+}
+
+.login-icon {
+  margin-right: 8px;
+}
+
+.features-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.feature-card {
+  background: white;
+  padding: 24px;
+}
+
+.feature-card h3 {
+  font-size: var(--font-size-20);
+  line-height: var(--line-height-20);
+  margin-bottom: 16px;
+  color: var(--color-dark-blue);
+}
+
+.feature-card p {
+  font-size: var(--font-size-16);
+  line-height: var(--line-height-16);
+  margin: 0;
+  color: var(--color-dark-grey);
+}
+
+/* Responsive adjustments for home page */
+@media screen and (max-width: 768px) {
+  .welcome-container {
+    padding: 40px 16px;
+  }
+  
+  .features-preview {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .welcome-logo img {
+    max-width: 150px;
+  }
+  
+  .login-section .btn {
+    padding: 14px 24px;
+    font-size: var(--font-size-16);
   }
 }

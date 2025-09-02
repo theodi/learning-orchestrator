@@ -44,8 +44,19 @@ export class ForecastController extends BaseController {
   // Get projects for dropdown
   async getProjects(req, res) {
     try {
+      const acceptHeader = req.get('accept') || '';
       const projects = await this.service.fetchProjects();
-      return this.sendSuccess(res, projects, 'Projects fetched successfully');
+      if (acceptHeader.includes('application/json')) {
+        return this.sendSuccess(res, projects, 'Projects fetched successfully');
+      }
+
+      return this.renderPage(req, res, 'pages/forecast/index', {
+        title: 'projects',
+        data: [],
+        type: 'projects',
+        endpoint: '/forecast/projects',
+        hubspotPortalId: process.env.HUBSPOT_PORTAL_ID
+      });
     } catch (error) {
       return this.sendError(res, error.message);
     }
@@ -215,10 +226,12 @@ export class ForecastController extends BaseController {
       } else if (acceptHeader.includes('application/json')) {
         return res.json(data);
       } else {
-        return this.renderPage(req, res, 'pages/forecast/datatable', {
+        return this.renderPage(req, res, 'pages/forecast/index', {
           title: type,
-          data,
-          type
+          data: [],
+          type,
+          endpoint: `/forecast/${type}`,
+          hubspotPortalId: process.env.HUBSPOT_PORTAL_ID
         });
       }
     } catch (error) {
@@ -280,6 +293,8 @@ export class ForecastController extends BaseController {
         assigned_persons: [parseInt(tutor_id, 10)],
         estimate: Math.round(parseFloat(course_duration_hours) * 60) // minutes
       });
+      // Fetch enriched task (to get company_task_id)
+      const enrichedDeliverTask = await this.service.getTaskById(deliverTask.id);
 
       // 2) Prep and admin from day before to course_date
       const prepTask = await this.service.createTask({
@@ -290,11 +305,15 @@ export class ForecastController extends BaseController {
         assigned_persons: [parseInt(tutor_id, 10)],
         estimate: 120 // 2h default
       });
+      // Fetch enriched task (to get company_task_id)
+      const enrichedPrepTask = await this.service.getTaskById(prepTask.id);
+
+      
 
       return this.sendSuccess(res, {
         project,
         project_view_id: companyProjectId,
-        tasks: { deliverTask, prepTask }
+        tasks: { deliverTask: enrichedDeliverTask, prepTask: enrichedPrepTask }
       });
     } catch (error) {
       return this.sendError(res, error.response?.data?.message || error.message);
