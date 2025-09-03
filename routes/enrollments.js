@@ -19,11 +19,7 @@ router.get('/all', (req, res) => enrollmentController.getAllEnrollments(req, res
 // Get enrollments for a specific course
 router.get('/course/:courseId', (req, res) => enrollmentController.getCourseEnrollments(req, res));
 
-// Verify enrollment token
-router.get('/verify/:token', (req, res) => enrollmentController.verifyEnrollment(req, res));
 
-// Complete pending enrollment
-router.post('/verify/:token/complete', (req, res) => enrollmentController.completeEnrollment(req, res));
 
 // Resend enrollment email
 router.post('/:enrollmentId/resend-email', (req, res) => enrollmentController.resendEmail(req, res));

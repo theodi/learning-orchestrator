@@ -15,6 +15,11 @@ const enrollmentSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  duration_months: {
+    type: Number,
+    required: false, // Made optional for existing records
+    default: 12 // Default to 12 months for backward compatibility
+  },
   status: {
     type: String,
     enum: ['pending_account_creation', 'enrolled', 'failed'],
@@ -42,6 +47,14 @@ const enrollmentSchema = new mongoose.Schema({
     default: null
   },
   moodle_last_access: {
+    type: Date,
+    default: null
+  },
+  moodle_first_access: {
+    type: Date,
+    default: null
+  },
+  moodle_last_course_access: {
     type: Date,
     default: null
   },

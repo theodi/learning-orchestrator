@@ -1,8 +1,14 @@
 <%- include('../../partials/header') %>
 
 <section class="content-block light-grey">
-  <h1>Course Enrollments</h1>
-  <p>View all enrollments for this course. Data is synced with Moodle to show current status.</p>
+  <h1>Course Enrollments: <%= courseName %></h1>
+  <p>View all enrollments for this course. <strong>Access timestamps are synced from Moodle</strong> to ensure accuracy.</p>
+  
+  <div class="mb-3">
+    <a href="<%= moodleRootUrl %>/user/index.php?id=<%= courseId %>" target="_blank" class="btn btn-outline-primary">
+      <i class="fa fa-external-link"></i> Manage Participants in Moodle
+    </a>
+  </div>
 
   <div class="mb-3">
     <a href="/moodle/courses" class="btn btn-secondary">
@@ -18,9 +24,9 @@
       <tr>
         <th>User Email</th>
         <th>Status</th>
-        <th>Enrollment Date</th>
-        <th>Expiry Date</th>
+        <th>First Moodle Access</th>
         <th>Last Moodle Access</th>
+        <th>Last Course Access</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -48,20 +54,29 @@ $(document).ready(function() {
       { data: 'user_email' },
       { data: 'status' },
       { 
-        data: 'enrollment_date',
-        render: function(data) {
-          return data ? new Date(data).toLocaleDateString('en-GB') : '-';
-        }
-      },
-      { 
-        data: 'expiry_date',
-        render: function(data) {
+        data: 'moodle_first_access',
+        render: function(data, type, row) {
+          if (data && row.status === 'enrolled') {
+            return `<span title="Synced from Moodle on ${row.last_moodle_sync ? new Date(row.last_moodle_sync).toLocaleDateString('en-GB') : 'Unknown'}">${new Date(data).toLocaleDateString('en-GB')}</span>`;
+          }
           return data ? new Date(data).toLocaleDateString('en-GB') : '-';
         }
       },
       { 
         data: 'moodle_last_access',
-        render: function(data) {
+        render: function(data, type, row) {
+          if (data && row.status === 'enrolled') {
+            return `<span title="Synced from Moodle on ${row.last_moodle_sync ? new Date(row.last_moodle_sync).toLocaleDateString('en-GB') : 'Unknown'}">${new Date(data).toLocaleDateString('en-GB')}</span>`;
+          }
+          return data ? new Date(data).toLocaleDateString('en-GB') : '-';
+        }
+      },
+      { 
+        data: 'moodle_last_course_access',
+        render: function(data, type, row) {
+          if (data && row.status === 'enrolled') {
+            return `<span title="Synced from Moodle on ${row.last_moodle_sync ? new Date(row.last_moodle_sync).toLocaleDateString('en-GB') : 'Unknown'}">${new Date(data).toLocaleDateString('en-GB')}</span>`;
+          }
           return data ? new Date(data).toLocaleDateString('en-GB') : '-';
         }
       },

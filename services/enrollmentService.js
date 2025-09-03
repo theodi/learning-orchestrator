@@ -22,6 +22,7 @@ export class EnrollmentService {
         user_email: userEmail,
         course_id: courseId,
         course_name: courseName,
+        duration_months: durationMonths,
         expiry_date: expiryDate,
         secret_token: this.generateSecretToken()
       });
@@ -38,13 +39,6 @@ export class EnrollmentService {
 
   // Process bulk enrollment
   async processBulkEnrollment(courseId, courseName, userEmails, durationMonths) {
-    console.log('Starting bulk enrollment process:', {
-      courseId,
-      courseName,
-      userEmails,
-      durationMonths
-    });
-
     const results = {
       successful: [],
       pending: [],
@@ -52,8 +46,6 @@ export class EnrollmentService {
     };
 
     for (const email of userEmails) {
-      console.log(`Processing enrollment for: ${email}`);
-      
       try {
         // Check if user already has enrollment
         const existingEnrollment = await Enrollment.findOne({
@@ -62,7 +54,6 @@ export class EnrollmentService {
         });
 
         if (existingEnrollment) {
-          console.log(`User ${email} already enrolled in course ${courseId}`);
           results.failed.push({
             email,
             reason: 'Already enrolled in this course'
@@ -71,21 +62,16 @@ export class EnrollmentService {
         }
 
         // Look up user in Moodle
-        console.log(`Looking up user ${email} in Moodle...`);
         const moodleUser = await this.moodleService.lookupUserByEmail(email);
 
         if (moodleUser) {
-          console.log(`User ${email} found in Moodle with ID: ${moodleUser.id}`);
           // User exists in Moodle - enroll directly
           try {
-            console.log(`Attempting to enroll user ${email} (Moodle ID: ${moodleUser.id}) in course ${courseId}`);
             const enrollmentResult = await this.moodleService.enrolUserInCourse(
               moodleUser.id,
               courseId,
               durationMonths
             );
-
-            console.log(`Moodle enrollment successful for ${email}:`, enrollmentResult);
 
             // Only create database record if Moodle enrollment succeeded
             const enrollment = await this.createEnrollment(email, courseId, courseName, durationMonths);
@@ -93,8 +79,6 @@ export class EnrollmentService {
             enrollment.moodle_user_id = moodleUser.id;
             enrollment.last_moodle_sync = new Date();
             await enrollment.save();
-
-            console.log(`Enrollment record created for ${email}`);
 
             results.successful.push({
               email,
@@ -111,7 +95,6 @@ export class EnrollmentService {
             });
           }
         } else {
-          console.log(`User ${email} not found in Moodle, creating pending enrollment`);
           // User doesn't exist in Moodle - create pending enrollment
           const enrollment = await this.createEnrollment(email, courseId, courseName, durationMonths);
           results.pending.push({
@@ -129,7 +112,6 @@ export class EnrollmentService {
       }
     }
 
-    console.log('Bulk enrollment process completed:', results);
     return results;
   }
 
@@ -146,14 +128,9 @@ export class EnrollmentService {
       });
 
       if (orphanedEnrollments.length > 0) {
-        console.log(`Found ${orphanedEnrollments.length} orphaned enrollments to clean up`);
-        
         for (const enrollment of orphanedEnrollments) {
-          console.log(`Cleaning up orphaned enrollment for ${enrollment.user_email} in course ${enrollment.course_id}`);
           await Enrollment.findByIdAndDelete(enrollment._id);
         }
-        
-        console.log('Cleanup completed');
       }
 
       return orphanedEnrollments.length;
@@ -173,13 +150,35 @@ export class EnrollmentService {
       const moodleEnrollments = await this.moodleService.getCourseEnrolments(courseId);
       
       for (const enrollment of enrollments) {
-        if (enrollment.moodle_user_id) {
-          const moodleEnrollment = moodleEnrollments.find(m => m.id === enrollment.moodle_user_id);
-          if (moodleEnrollment) {
-            enrollment.moodle_last_access = moodleEnrollment.lastaccess ? 
-              new Date(moodleEnrollment.lastaccess * 1000) : null;
+        if (enrollment.moodle_user_id && enrollment.status === 'enrolled') {
+          // For enrolled users, get detailed enrollment data from Moodle
+          const moodleEnrollmentDetails = await this.moodleService.getUserEnrollmentDetails(
+            enrollment.moodle_user_id, 
+            enrollment.course_id
+          );
+          
+          if (moodleEnrollmentDetails) {
+            // Update with Moodle data (authoritative source)
+            enrollment.moodle_first_access = moodleEnrollmentDetails.firstAccess;
+            enrollment.moodle_last_access = moodleEnrollmentDetails.lastAccess;
+            enrollment.moodle_last_course_access = moodleEnrollmentDetails.lastCourseAccess;
             enrollment.last_moodle_sync = new Date();
+            
+            // Update course name if it has changed in Moodle
+            if (moodleEnrollmentDetails.courseName && moodleEnrollmentDetails.courseName !== enrollment.course_name) {
+              enrollment.course_name = moodleEnrollmentDetails.courseName;
+            }
+            
             await enrollment.save();
+          } else {
+            // Fallback to basic sync if detailed data not available
+            const moodleEnrollment = moodleEnrollments.find(m => m.id === enrollment.moodle_user_id);
+            if (moodleEnrollment) {
+              enrollment.moodle_last_access = moodleEnrollment.lastaccess ? 
+                new Date(moodleEnrollment.lastaccess * 1000) : null;
+              enrollment.last_moodle_sync = new Date();
+              await enrollment.save();
+            }
           }
         }
       }
@@ -194,7 +193,32 @@ export class EnrollmentService {
   // Get enrollment by secret token
   async getEnrollmentByToken(token) {
     try {
-      return await Enrollment.findOne({ secret_token: token });
+      const enrollment = await Enrollment.findOne({ secret_token: token });
+      
+      if (enrollment && enrollment.moodle_user_id && enrollment.status === 'enrolled') {
+        // Sync with Moodle to get latest enrollment data
+        const moodleEnrollmentDetails = await this.moodleService.getUserEnrollmentDetails(
+          enrollment.moodle_user_id, 
+          enrollment.course_id
+        );
+        
+        if (moodleEnrollmentDetails) {
+          // Update with Moodle data (authoritative source)
+          enrollment.moodle_first_access = moodleEnrollmentDetails.firstAccess;
+          enrollment.moodle_last_access = moodleEnrollmentDetails.lastAccess;
+          enrollment.moodle_last_course_access = moodleEnrollmentDetails.lastCourseAccess;
+          enrollment.last_moodle_sync = new Date();
+          
+          // Update course name if it has changed in Moodle
+          if (moodleEnrollmentDetails.courseName && moodleEnrollmentDetails.courseName !== enrollment.course_name) {
+            enrollment.course_name = moodleEnrollmentDetails.courseName;
+          }
+          
+          await enrollment.save();
+        }
+      }
+      
+      return enrollment;
     } catch (error) {
       console.error('Error fetching enrollment by token:', error.message);
       throw error;
@@ -218,10 +242,14 @@ export class EnrollmentService {
       
       if (moodleUser) {
         // User now exists - enroll them
+        // Use stored duration_months if available, otherwise calculate from expiry date
+        const durationMonths = enrollment.duration_months || 
+          Math.ceil((enrollment.expiry_date - enrollment.enrollment_date) / (1000 * 60 * 60 * 24 * 30));
+        
         const enrollmentResult = await this.moodleService.enrolUserInCourse(
           moodleUser.id,
           enrollment.course_id,
-          Math.ceil((enrollment.expiry_date - enrollment.enrollment_date) / (1000 * 60 * 60 * 24 * 30))
+          durationMonths
         );
 
         enrollment.status = 'enrolled';

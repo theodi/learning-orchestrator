@@ -16,7 +16,8 @@ export const API_ENDPOINTS = {
     PORTAL_ID: process.env.HUBSPOT_PORTAL_ID || "748510",
   },
   MOODLE: {
-    BASE_URL: "https://moodle.learndata.info/webservice/rest/server.php",
+    BASE_URL: process.env.MOODLE_URI || "https://moodle.learndata.info/webservice/rest/server.php",
+    ROOT_URL: process.env.MOODLE_ROOT || "https://moodle.learndata.info",
   },
 };
 

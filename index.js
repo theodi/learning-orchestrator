@@ -180,6 +180,10 @@ app.use("/course-bookings", ensureAuthenticated, courseBookingsRoutes);
 import moodleRoutes from "./routes/moodle.js";
 app.use("/moodle", ensureAuthenticated, moodleRoutes);
 
+// Public enrollment verification routes (no authentication required)
+import enrollmentVerificationRoutes from "./routes/enrollmentVerification.js";
+app.use("/enrollments/verify", enrollmentVerificationRoutes);
+
 import enrollmentRoutes from "./routes/enrollments.js";
 app.use("/enrollments", ensureAuthenticated, enrollmentRoutes);
 

@@ -7,6 +7,11 @@ export class MoodleService {
     this.functionName = 'core_course_get_courses';
   }
 
+  // Get the Moodle root URL for frontend links
+  getMoodleRootUrl() {
+    return process.env.MOODLE_ROOT || 'https://moodle.learndata.info';
+  }
+
   buildParams(extraParams = {}) {
     const params = {
       wstoken: this.token,
@@ -67,7 +72,6 @@ export class MoodleService {
         field: 'email',
         values: [email]
       });
-
       const response = await axios.get(this.baseUrl, { params });
       
       if (response.data && response.data.exception) {
@@ -87,15 +91,6 @@ export class MoodleService {
       const enrolmentEndDate = new Date();
       enrolmentEndDate.setMonth(enrolmentEndDate.getMonth() + enrolmentDurationMonths);
 
-      // Debug logging
-      console.log('Enrolling user:', {
-        userId,
-        courseId,
-        durationMonths: enrolmentDurationMonths,
-        startDate: new Date(),
-        endDate: enrolmentEndDate
-      });
-
       const enrolmentData = {
         roleid: 5, // Student role ID (may need to be configurable)
         userid: parseInt(userId),
@@ -105,27 +100,12 @@ export class MoodleService {
         suspend: 0
       };
 
-      console.log('Enrolment data:', enrolmentData);
-
       const params = this.buildParams({
         wsfunction: 'enrol_manual_enrol_users',
         enrolments: [enrolmentData]
       });
 
-      console.log('Moodle API params:', params);
-      console.log('Full URL:', this.baseUrl);
-      
-      // Debug: Show the flattened parameter structure
-      console.log('Flattened enrolment params:');
-      Object.keys(params).forEach(key => {
-        if (key.startsWith('enrolments[')) {
-          console.log(`  ${key}: ${params[key]}`);
-        }
-      });
-
       const response = await axios.get(this.baseUrl, { params });
-      
-      console.log('Moodle API response:', response.data);
       
       if (response.data && response.data.exception) {
         throw new Error(response.data.message || 'Enrolment failed');
@@ -174,6 +154,42 @@ export class MoodleService {
     } catch (error) {
       console.error('Error checking enrolment status:', error.message);
       return false;
+    }
+  }
+
+  // Get user enrollment details from Moodle
+  async getUserEnrollmentDetails(userId, courseId) {
+    try {
+      // First get the course enrollments to find the specific user
+      const params = this.buildParams({
+        wsfunction: 'core_enrol_get_enrolled_users',
+        courseid: courseId
+      });
+
+      const response = await axios.get(this.baseUrl, { params });
+      
+      if (response.data && response.data.exception) {
+        throw new Error(response.data.message || 'Failed to fetch course enrollments');
+      }
+
+      // Find the specific user enrollment in this course
+      const userEnrollment = response.data.find(user => user.id === userId);
+      
+      if (userEnrollment) {
+        return {
+          courseId: courseId,
+          courseName: userEnrollment.course_name || null,
+          firstAccess: userEnrollment.firstaccess ? new Date(userEnrollment.firstaccess * 1000) : null,
+          lastAccess: userEnrollment.lastaccess ? new Date(userEnrollment.lastaccess * 1000) : null,
+          lastCourseAccess: userEnrollment.lastcourseaccess ? new Date(userEnrollment.lastcourseaccess * 1000) : null,
+          progress: userEnrollment.progress || 0
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error fetching user enrollment details:', error.message);
+      return null;
     }
   }
 }
