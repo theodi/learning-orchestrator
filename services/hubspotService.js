@@ -14,34 +14,90 @@ export class HubSpotService {
   }
 
   /**
-   * Fetch all HubSpot products
-   */
-  async fetchProducts() {
-    const baseUrl = `${this.baseUrl}/crm/v3/objects/products`;
+ * Fetch all HubSpot products
+ * @param {string|null} productType - Optional product type filter (e.g., "Learning Course")
+ */
+  async fetchProducts(productType = null) {
     const allProducts = [];
     let after = null;
     let hasMore = true;
 
     try {
-      while (hasMore) {
-        const url = `${baseUrl}?limit=100${after ? `&after=${after}` : ""}`;
-        const response = await axios.get(url, { headers: this.headers });
+      if (productType) {
+        // Use POST /search with filter
+        const url = `${this.baseUrl}/crm/v3/objects/products/search`;
 
-        const results = response.data.results || [];
-        allProducts.push(
-          ...results.map((product) => ({
-            id: product.id,
-            name: product.properties.name,
-          }))
-        );
+        while (hasMore) {
+          const body = {
+            filterGroups: [
+              {
+                filters: [
+                  {
+                    propertyName: 'hs_product_type',
+                    operator: 'EQ',
+                    value: productType
+                  }
+                ]
+              }
+            ],
+            properties: ['name', 'hs_product_type', 'description', 'price', 'hs_sku', 'hs_recurring_billing_period', 'createdate', 'hs_lastmodifieddate'],
+            limit: 100,
+            ...(after && { after })
+          };
 
-        after = response.data.paging?.next?.after;
-        hasMore = !!after;
+          const response = await axios.post(url, body, { headers: this.headers });
+
+          const results = response.data.results || [];
+          allProducts.push(
+            ...results.map((product) => ({
+              id: product.id,
+              name: product.properties.name,
+              type: product.properties.hs_product_type || null,
+              description: product.properties.description || null,
+              price: product.properties.price || null,
+              sku: product.properties.hs_sku || null,
+              billing_period: product.properties.hs_recurring_billing_period || null,
+              created: product.properties.createdate || null,
+              modified: product.properties.hs_lastmodifieddate || null
+            }))
+          );
+
+          after = response.data.paging?.next?.after;
+          hasMore = !!after;
+        }
+
+      } else {
+        // Use GET /objects/products with pagination and more properties
+        const url = `${this.baseUrl}/crm/v3/objects/products`;
+
+        while (hasMore) {
+          const response = await axios.get(
+            `${url}?limit=100&properties=name,hs_product_type,description,price,hs_sku,hs_recurring_billing_period,createdate,hs_lastmodifieddate${after ? `&after=${after}` : ''}`,
+            { headers: this.headers }
+          );
+
+          const results = response.data.results || [];
+          allProducts.push(
+            ...results.map((product) => ({
+              id: product.id,
+              name: product.properties.name,
+              type: product.properties.hs_product_type || null,
+              price: product.properties.price || null,
+              sku: product.properties.hs_sku || null,
+              billing_period: product.properties.hs_recurring_billing_period || null,
+              created: product.properties.createdate || null,
+              modified: product.properties.hs_lastmodifieddate || null
+            }))
+          );
+
+          after = response.data.paging?.next?.after;
+          hasMore = !!after;
+        }
       }
 
       return allProducts;
     } catch (error) {
-      console.error("Error fetching HubSpot products:", error.response?.data || error.message);
+      console.error('Error fetching HubSpot products:', error.response?.data || error.message);
       throw error;
     }
   }
@@ -648,7 +704,7 @@ export class HubSpotService {
    */
   handleWebhook(req) {
     const event = req.body;
-    console.log("Received HubSpot Webhook Event:", JSON.stringify(event, null, 2));
+    //console.log("Received HubSpot Webhook Event:", JSON.stringify(event, null, 2));
 
     return {
       objectType: event.objectType,

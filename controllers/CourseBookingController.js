@@ -91,7 +91,7 @@ export default class CourseBookingController extends BaseController {
   async new(req, res) {
     try {
       // Get the same data as the current HubSpot form
-      const products = await this.hubspotService.fetchProducts();
+      const products = await this.hubspotService.fetchProducts("Learning Course");
       const tutors = await this.forecastService.fetchUsers();
       const companies = await this.hubspotService.fetchCompaniesBatch();
       
