@@ -10,6 +10,7 @@ import express from 'express';
 import session from 'express-session';
 import passport from './passport.js'; // Import the passport module
 import authRoutes from './routes/auth.js'; // Import the authentication routes module
+import methodOverride from 'method-override';
 
 import { ensureAuthenticated } from './middleware/auth.js';
 import { connectDB } from './config/database.js';
@@ -21,6 +22,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(methodOverride('_method'));
 
 app.set('view engine', 'ejs');
 
@@ -192,34 +194,45 @@ import webhooksRoutes from "./routes/webhooks.js";
 app.use("/webhooks", webhooksRoutes);
 
 //Keep this at the END!
-app.get('*', function(req, res, next){
+app.get('*', function(req, res){
   const page = {
     title: "404 Not Found"
   };
   res.locals.page = page;
-  const error = new Error("Not Found");
-  error.status = 404;
-  next(error);
+  
+  // Content negotiation based on request Accept header
+  const acceptHeader = req.get('Accept');
+  
+  if (acceptHeader === 'application/json') {
+    // Respond with JSON
+    res.status(404).json({ message: "Not Found" });
+  } else {
+    // Respond with HTML (rendering an error page)
+    res.status(404).render('errors/error', { statusCode: 404, errorMessage: "Not Found" });
+  }
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
   // Default status code for unhandled errors
-  console.log(err);
   let statusCode = 500;
   let errorMessage = "Internal Server Error";
+  
   // Check if the error has a specific status code and message
   if (err.status) {
       statusCode = err.status;
       errorMessage = err.message;
   }
+  
   const page = {
     title: "Error"
   };
   res.locals.page = page;
 
-  // Log the error stack trace
-  //console.error(err.stack);
+  // Only log actual errors (not 404s) with minimal info
+  if (statusCode !== 404) {
+    console.log(`Error ${statusCode}: ${errorMessage} - ${req.method} ${req.path}`);
+  }
 
   // Content negotiation based on request Accept header
   const acceptHeader = req.get('Accept');

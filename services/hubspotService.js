@@ -17,6 +17,22 @@ export class HubSpotService {
  * Fetch all HubSpot products
  * @param {string|null} productType - Optional product type filter (e.g., "Learning Course")
  */
+  // Convert HubSpot ISO8601 period (e.g., "P24M") to number of months
+  parseHubspotPeriod(period) {
+    if (!period) return null;
+    const str = String(period).trim();
+    const match = str.match(/^P(\d+)M$/i);
+    if (match) return parseInt(match[1], 10);
+    const asNumber = Number(str);
+    return Number.isFinite(asNumber) ? asNumber : null;
+  }
+
+  // Build HubSpot ISO8601 period string from number of months
+  buildHubspotPeriod(months) {
+    const n = parseInt(months, 10);
+    return Number.isFinite(n) && n > 0 ? `P${n}M` : '';
+  }
+
   async fetchProducts(productType = null) {
     const allProducts = [];
     let after = null;
@@ -40,7 +56,7 @@ export class HubSpotService {
                 ]
               }
             ],
-            properties: ['name', 'hs_product_type', 'description', 'price', 'hs_sku', 'hs_recurring_billing_period', 'createdate', 'hs_lastmodifieddate'],
+            properties: ['name', 'hs_product_type', 'description', 'price', 'hs_sku', 'hs_recurring_billing_period', 'createdate', 'hs_lastmodifieddate', 'moodle_course_id', 'learning_price_members', 'price__gov_campus_', 'notes', 'learning_course_type'],
             limit: 100,
             ...(after && { after })
           };
@@ -56,7 +72,12 @@ export class HubSpotService {
               description: product.properties.description || null,
               price: product.properties.price || null,
               sku: product.properties.hs_sku || null,
-              billing_period: product.properties.hs_recurring_billing_period || null,
+              billing_period: this.parseHubspotPeriod(product.properties.hs_recurring_billing_period),
+              moodle_course_id: product.properties.moodle_course_id || null,
+              learning_price_members: product.properties.learning_price_members || null,
+              price_gov_campus: product.properties.price__gov_campus_ || null,
+              notes: product.properties.notes || '',
+              learning_course_type: product.properties.learning_course_type || '',
               created: product.properties.createdate || null,
               modified: product.properties.hs_lastmodifieddate || null
             }))
@@ -72,7 +93,7 @@ export class HubSpotService {
 
         while (hasMore) {
           const response = await axios.get(
-            `${url}?limit=100&properties=name,hs_product_type,description,price,hs_sku,hs_recurring_billing_period,createdate,hs_lastmodifieddate${after ? `&after=${after}` : ''}`,
+            `${url}?limit=100&properties=name,hs_product_type,description,price,hs_sku,hs_recurring_billing_period,createdate,hs_lastmodifieddate,moodle_course_id,learning_price_members,price__gov_campus_,notes,learning_course_type${after ? `&after=${after}` : ''}`,
             { headers: this.headers }
           );
 
@@ -84,7 +105,12 @@ export class HubSpotService {
               type: product.properties.hs_product_type || null,
               price: product.properties.price || null,
               sku: product.properties.hs_sku || null,
-              billing_period: product.properties.hs_recurring_billing_period || null,
+              billing_period: this.parseHubspotPeriod(product.properties.hs_recurring_billing_period),
+              moodle_course_id: product.properties.moodle_course_id || null,
+              learning_price_members: product.properties.learning_price_members || null,
+              price_gov_campus: product.properties.price__gov_campus_ || null,
+              notes: product.properties.notes || '',
+              learning_course_type: product.properties.learning_course_type || '',
               created: product.properties.createdate || null,
               modified: product.properties.hs_lastmodifieddate || null
             }))
@@ -98,6 +124,105 @@ export class HubSpotService {
       return allProducts;
     } catch (error) {
       console.error('Error fetching HubSpot products:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch HubSpot courses (products with type "Learning Course")
+   */
+  async fetchCourses() {
+    return this.fetchProducts('Learning Course');
+  }
+
+  /**
+   * Get a single product by ID
+   */
+  async getProduct(productId) {
+    try {
+      const url = `${this.baseUrl}/crm/v3/objects/products/${productId}`;
+      const response = await axios.get(
+        `${url}?properties=name,hs_product_type,description,price,hs_sku,hs_recurring_billing_period,moodle_course_id,learning_price_members,price__gov_campus_,notes,learning_course_type`,
+        { headers: this.headers }
+      );
+
+      const product = response.data;
+      return {
+        id: product.id,
+        name: product.properties.name,
+        type: product.properties.hs_product_type || null,
+        description: product.properties.description || null,
+        price: product.properties.price || null,
+        sku: product.properties.hs_sku || null,
+        billing_period: this.parseHubspotPeriod(product.properties.hs_recurring_billing_period),
+        moodle_course_id: product.properties.moodle_course_id || null,
+        learning_price_members: product.properties.learning_price_members || null,
+        price_gov_campus: product.properties.price__gov_campus_ || null,
+        notes: product.properties.notes || '',
+        learning_course_type: product.properties.learning_course_type || ''
+      };
+    } catch (error) {
+      console.error('Error fetching HubSpot product:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new HubSpot product
+   */
+  async createProduct(productData) {
+    try {
+      const url = `${this.baseUrl}/crm/v3/objects/products`;
+      const payload = {
+        properties: {
+          name: productData.name,
+          hs_product_type: productData.type || 'Learning Course',
+          description: productData.description || '',
+          price: productData.price || '',
+          hs_sku: productData.sku || '',
+          hs_recurring_billing_period: this.buildHubspotPeriod(productData.billing_period || productData.enrollment_duration_months),
+          moodle_course_id: productData.moodle_course_id || '',
+          learning_price_members: productData.learning_price_members || '',
+          price__gov_campus_: productData.price_gov_campus || '',
+          notes: productData.notes || '',
+          learning_course_type: productData.learning_course_type || ''
+        }
+      };
+
+      const response = await axios.post(url, payload, { headers: this.headers });
+      return response.data;
+    } catch (error) {
+      console.error('Error creating HubSpot product:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing HubSpot product
+   */
+  async updateProduct(productId, productData) {
+    try {
+      const url = `${this.baseUrl}/crm/v3/objects/products/${productId}`;
+      const payload = {
+        properties: {
+          name: productData.name,
+          hs_product_type: productData.type || 'Learning Course',
+          description: productData.description || '',
+          price: productData.price || '',
+          hs_sku: productData.sku || '',
+          hs_recurring_billing_period: this.buildHubspotPeriod(productData.billing_period || productData.enrollment_duration_months),
+          moodle_course_id: productData.moodle_course_id || '',
+          learning_price_members: productData.learning_price_members || '',
+          price__gov_campus_: productData.price_gov_campus || '',
+          notes: productData.notes || '',
+          learning_course_type: productData.learning_course_type || ''
+        }
+      };
+
+      const response = await axios.patch(url, payload, { headers: this.headers });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating HubSpot product:', error.response?.data || error.message);
       throw error;
     }
   }
@@ -418,6 +543,27 @@ export class HubSpotService {
   }
 
   /**
+   * Update a HubSpot deal with additional properties
+   */
+  async updateDeal(dealId, updateData) {
+    const url = `${this.baseUrl}/crm/v3/objects/deals/${dealId}`;
+
+    const data = {
+      properties: {
+        ...updateData
+      }
+    };
+
+    try {
+      const response = await axios.patch(url, data, { headers: this.headers });
+      return response.data;
+    } catch (error) {
+      console.error("Error updating HubSpot deal:", JSON.stringify(error.response?.data || error.message, null, 2));
+      throw error;
+    }
+  }
+
+  /**
    * Associate deal with company
    */
   async associateDealWithCompany(dealId, companyId) {
@@ -491,16 +637,25 @@ export class HubSpotService {
         {
           headers: this.headers,
           params: {
-            properties: [
-              'dealname',
-              'amount',
-              'closedate',
-              'pipeline',
-              'dealstage',
-              'hs_deal_stage_probability',
-              'hubspot_owner_id',
-              'description'
-            ].join(',')
+                         properties: [
+               'dealname',
+               'amount',
+               'closedate',
+               'pipeline',
+               'dealstage',
+               'hs_deal_stage_probability',
+               'hubspot_owner_id',
+               'description',
+               'startdate',
+               'course_name',
+               'course_date',
+               'calendar_event_id',
+               'calendar_event_url',
+               'forecast_id',
+               'projecturl',
+               'createdate',
+               'hs_lastmodifieddate'
+             ].join(',')
           }
         }
       );
@@ -599,12 +754,54 @@ export class HubSpotService {
         deal.properties.stage_details = null;
       }
   
-      return deal;
-    } catch (error) {
-      console.error('Error fetching deal:', error.response?.data || error.message);
-      throw error;
-    }
-  }
+             return deal;
+     } catch (error) {
+       console.error('Error fetching deal:', error.response?.data || error.message);
+       throw error;
+     }
+   }
+
+   /**
+    * Fetch deals from a specific pipeline
+    */
+   async fetchDealsFromPipeline(pipelineId, limit = 100) {
+     const url = `${this.baseUrl}/crm/v3/objects/deals/search`;
+     
+     const body = {
+       filterGroups: [
+         {
+           filters: [
+             {
+               propertyName: 'pipeline',
+               operator: 'EQ',
+               value: pipelineId
+             }
+           ]
+         }
+       ],
+       properties: [
+         'dealname', 'amount', 'pipeline', 'dealstage', 'description', 
+         'closedate', 'startdate', 'course_name', 'course_date', 'hubspot_owner_id',
+         'calendar_event_id', 'calendar_event_url', 'forecast_id', 'projecturl',
+         'createdate', 'hs_lastmodifieddate'
+       ],
+       limit: limit,
+       sorts: [
+         {
+           propertyName: 'createdate',
+           direction: 'DESCENDING'
+         }
+       ]
+     };
+
+     try {
+       const response = await axios.post(url, body, { headers: this.headers });
+       return response.data.results || [];
+     } catch (error) {
+       console.error("Error fetching deals from pipeline:", JSON.stringify(error.response?.data || error.message, null, 2));
+       throw error;
+     }
+   }
   
 
   /**

@@ -1,0 +1,142 @@
+<%- include('../../../partials/header') %>
+
+<section class="content-block light-grey">
+  <div class="container">
+    <div class="row">
+      <div class="col-md-8">
+        <h1>
+          <img src="/lib/icons/hubspot.ico" alt="HubSpot" style="height:24px;width:24px;vertical-align:middle;margin-right:8px;">
+          Course Details
+        </h1>
+      </div>
+      <div class="col-md-4 text-right">
+        <a href="/hubspot/courses/<%= course.id %>/edit" class="btn btn-warning">
+          Edit Course
+        </a>
+        <a href="/hubspot/courses" class="btn btn-default">
+          Back to Courses
+        </a>
+      </div>
+    </div>
+    
+    <div class="row">
+      <div class="col-md-12">
+        <div class="panel panel-default">
+          <div class="panel-heading">
+            <h3 class="panel-title"><%= course.name %></h3>
+          </div>
+
+          <div class="panel-body">
+            <% if (course.description) { %>
+              <div class="row">
+                <div class="col-md-12">
+                  <h4 style="display:none;">Description</h4>
+                  <p><%= course.description %></p>
+                </div>
+              </div>
+              <% } %>
+            <div class="row">
+              <div class="col-md-6">
+                <table class="table table-borderless">
+                  <tr>
+                    <th style="width: 40%;">Course Name:</th>
+                    <td><strong><%= course.name %></strong></td>
+                  </tr>
+                  <tr>
+                    <th>HubSpot ID:</th>
+                    <td>
+                      <a href="https://app.hubspot.com/products/<%= portalId %>/product/<%= course.id %>" target="_blank" rel="noopener noreferrer"><%= course.id %></a>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Type:</th>
+                    <td><span class="label label-info"><%= course.type %></span></td>
+                  </tr>
+                  <tr>
+                    <th>Course Type:</th>
+                    <td><%= course.learning_course_type || 'N/A' %></td>
+                  </tr>
+                  <tr>
+                    <th>Moodle Course:</th>
+                    <td>
+                      <% if (course.moodle_course_id) { %>
+                        <a id="moodleCourseLink" href="<%= moodleRoot %>/course/view.php?id=<%= course.moodle_course_id %>" target="_blank" rel="noopener noreferrer">Course #<%= course.moodle_course_id %></a>
+                        <div id="moodleCourseName" class="text-muted" style="margin-top:4px;"></div>
+                      <% } else { %>
+                        N/A
+                      <% } %>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Enrollment Duration:</th>
+                    <td><%= course.billing_period ? course.billing_period + ' months' : 'N/A' %></td>
+                  </tr>
+                </table>
+              </div>
+              <div class="col-md-6">
+                <table class="table table-borderless">
+                  <tr>
+                    <th style="width: 40%;">Base Price:</th>
+                    <td><strong><%= course.price ? `£${parseFloat(course.price).toFixed(2)}` : 'N/A' %></strong></td>
+                  </tr>
+                  <tr>
+                    <th>Members Price:</th>
+                    <td><%= course.learning_price_members ? `£${parseFloat(course.learning_price_members).toFixed(2)}` : 'N/A' %></td>
+                  </tr>
+                  <tr>
+                    <th>Gov Campus Price:</th>
+                    <td><%= course.price_gov_campus ? `£${parseFloat(course.price_gov_campus).toFixed(2)}` : 'N/A' %></td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+
+            <% if (course.notes) { %>
+            <div class="row">
+              <div class="col-md-12">
+                <h4>Notes</h4>
+                <pre style="white-space: pre-wrap; background: transparent; border: none; padding-left: 0;"> <%= course.notes %></pre>
+              </div>
+            </div>
+            <% } %>
+              
+            <div class="row">
+              <div class="col-md-12">
+                <h4>Additional Information</h4>
+                <% if (course.created) { %>
+                <p><strong>Created:</strong> <%= new Date(course.created).toLocaleDateString() %></p>
+                <% } %>
+                <% if (course.modified) { %>
+                <p><strong>Last Modified:</strong> <%= new Date(course.modified).toLocaleDateString() %></p>
+                <% } %>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  $(document).ready(function() {
+    var courseId = <%- JSON.stringify((course && course.moodle_course_id) || null) %>;
+    if (!courseId) return;
+
+    $.ajax({
+      url: '/moodle/courses',
+      headers: { 'Accept': 'application/json' }
+    }).done(function(json) {
+      var rows = (json && (json.data || json)) || [];
+      var match = rows.find(function(c) {
+        return String(c.id) === String(courseId);
+      });
+      if (match && (match.fullname || match.shortname)) {
+        $('#moodleCourseName').text(match.fullname || match.shortname);
+      }
+    });
+  });
+</script>
+
+
+<%- include('../../../partials/footer') %>

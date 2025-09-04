@@ -3,7 +3,7 @@
   <div class="container">
     <div class="jumbotron">
       <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="text-primary"><span class="fa fa-calendar"></span> Course Booking Details</h1>
+        <h1 class="text-primary"><span class="fa fa-calendar"></span>Booking Details</h1>
         <div>
 
           <a href="/course-bookings" class="btn btn-secondary">
@@ -126,7 +126,9 @@
 $(document).ready(function() {
   const hubspotDealId = '<%= booking.hubspot_deal_id %>';
   const forecastProjectId = '<%= booking.forecast_project_id %>';
+  const forecastProjectUrl = '<%= booking.forecast_project_url %>';
   const googleCalendarEventId = '<%= booking.google_calendar_event_id %>';
+  const googleCalendarUrl = '<%= booking.google_calendar_url %>';
 
   // Load HubSpot data
   if (hubspotDealId) {
@@ -135,16 +137,26 @@ $(document).ready(function() {
     showNoData('hubspot', 'No HubSpot deal created');
   }
 
-  // Load Forecast data
+  // Load Forecast data (fallback to URL-only link)
   if (forecastProjectId) {
     loadForecastData(forecastProjectId);
+  } else if (forecastProjectUrl) {
+    // We have a URL but no ID: just show the section so the button is usable
+    $('#forecastLoading').hide();
+    $('#forecastContent').show();
+    // Keep existing button; no need to inject a message
   } else {
     showNoData('forecast', 'No Forecast project created');
   }
 
-  // Load Calendar data
+  // Load Calendar data (fallback to URL-only link)
   if (googleCalendarEventId) {
     loadCalendarData(googleCalendarEventId);
+  } else if (googleCalendarUrl) {
+    // We have a URL but no ID: just show the section so the button is usable
+    $('#calendarLoading').hide();
+    $('#calendarContent').show();
+    // Keep existing button; no need to inject a message
   } else {
     showNoData('calendar', 'No Calendar event created');
   }

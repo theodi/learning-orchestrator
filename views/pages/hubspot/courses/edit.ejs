@@ -1,0 +1,183 @@
+<%- include('../../../partials/header') %>
+
+<section class="content-block light-grey">
+  <div class="container">
+    <div class="row">
+      <div class="col-md-8">
+        <h1>
+          <img src="/lib/icons/hubspot.ico" alt="HubSpot" style="height:24px;width:24px;vertical-align:middle;margin-right:8px;">
+          <%= course.id ? 'Edit Course' : 'Create New Course' %>
+        </h1>
+      </div>
+      <div class="col-md-4 text-right">
+        <% if (course.id) { %>
+          <a href="/hubspot/courses/<%= course.id %>" class="btn btn-info">
+            View Course
+          </a>
+        <% } %>
+        <a href="/hubspot/courses" class="btn btn-default">
+          Back to Courses
+        </a>
+      </div>
+    </div>
+    
+    <% if (typeof error !== 'undefined' && error) { %>
+    <div class="row">
+      <div class="col-md-12">
+        <div class="alert alert-danger">
+          <%= error %>
+        </div>
+      </div>
+    </div>
+    <% } %>
+    
+    <div class="row">
+      <div class="col-md-12">
+        <div class="panel panel-default">
+          <div class="panel-heading">
+            <h3 class="panel-title"><%= course.id ? `Edit Course: ${course.name}` : 'Create New Course' %></h3>
+          </div>
+          <div class="panel-body">
+            <form method="POST" action="<%= course.id ? `/hubspot/courses/${course.id}/edit` : '/hubspot/courses' %>" class="form-horizontal">
+              
+              <div class="form-group">
+                <label for="name" class="col-sm-3 control-label">Course Name *</label>
+                <div class="col-sm-9">
+                  <input type="text" class="form-control" id="name" name="name" value="<%= course.name %>" required>
+                </div>
+              </div>
+              
+              <div class="form-group">
+                <label for="description" class="col-sm-3 control-label">Description</label>
+                <div class="col-sm-9">
+                  <textarea class="form-control" id="description" name="description" rows="3"><%= course.description || '' %></textarea>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="learning_course_type" class="col-sm-3 control-label">Course Type</label>
+                <div class="col-sm-9">
+                  <select class="form-control" id="learning_course_type" name="learning_course_type">
+                    <option value="">Select type</option>
+                    <option value="Tutor led" <%= course.learning_course_type === 'Tutor led' ? 'selected' : '' %>>Tutor led</option>
+                    <option value="Self paced" <%= course.learning_course_type === 'Self paced' ? 'selected' : '' %>>Self paced</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="form-group">
+                <label for="moodle_course_id" class="col-sm-3 control-label">Moodle Course</label>
+                <div class="col-sm-9">
+                  <select class="form-control" id="moodle_course_id" name="moodle_course_id" style="width:100%">
+                    <% if (course.moodle_course_id) { %>
+                      <option value="<%= course.moodle_course_id %>" selected>Selected course (<%= course.moodle_course_id %>)</option>
+                    <% } %>
+                  </select>
+                  <small class="text-muted">Search and select from Moodle courses</small>
+                </div>
+              </div>
+              
+              <div class="form-group">
+                <label for="enrollment_duration_months" class="col-sm-3 control-label">Enrollment Duration</label>
+                <div class="col-sm-9">
+                  <select class="form-control" id="enrollment_duration_months" name="enrollment_duration_months">
+                    <option value="">Select duration...</option>
+                    <option value="3" <%= String(course.enrollment_duration_months || course.term) === '3' ? 'selected' : '' %>>3 months</option>
+                    <option value="6" <%= String(course.enrollment_duration_months || course.term) === '6' ? 'selected' : '' %>>6 months</option>
+                    <option value="12" <%= String(course.enrollment_duration_months || course.term) === '12' ? 'selected' : '' %>>12 months</option>
+                    <option value="24" <%= String(course.enrollment_duration_months || course.term) === '24' ? 'selected' : '' %>>24 months</option>
+                  </select>
+                </div>
+              </div>
+              
+              <hr>
+              <h4>Pricing Information</h4>
+              
+              <div class="form-group">
+                <label for="price" class="col-sm-3 control-label">Base Price</label>
+                <div class="col-sm-9">
+                  <div class="input-group">
+                    <span class="input-group-addon"></span>
+                    <input type="number" class="form-control" id="price" name="price" step="0.01" min="0" value="<%= course.price || '' %>">
+                  </div>
+                </div>
+              </div>
+              
+              <div class="form-group">
+                <label for="learning_price_members" class="col-sm-3 control-label">Members Price</label>
+                <div class="col-sm-9">
+                  <div class="input-group">
+                    <span class="input-group-addon"></span>
+                    <input type="number" class="form-control" id="learning_price_members" name="learning_price_members" step="0.01" min="0" value="<%= course.learning_price_members || '' %>">
+                  </div>
+                </div>
+              </div>
+              
+              <div class="form-group">
+                <label for="price_gov_campus" class="col-sm-3 control-label">Gov Campus Price</label>
+                <div class="col-sm-9">
+                  <div class="input-group">
+                    <span class="input-group-addon"></span>
+                    <input type="number" class="form-control" id="price_gov_campus" name="price_gov_campus" step="0.01" min="0" value="<%= course.price_gov_campus || '' %>">
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="notes" class="col-sm-3 control-label">Notes</label>
+                <div class="col-sm-9">
+                  <textarea class="form-control" id="notes" name="notes" rows="4" placeholder="Additional pricing info, client-specific notes, etc."><%= course.notes || '' %></textarea>
+                </div>
+              </div>
+              <br/><br/>
+              <div class="form-group">
+                <div class="col-sm-offset-3 col-sm-9">
+                  <button type="submit" class="btn btn-primary">
+                    <%= course.id ? 'Update Course' : 'Create Course' %>
+                  </button>
+                  <a href="<%= course.id ? `/hubspot/courses/${course.id}` : '/hubspot/courses' %>" class="btn btn-default">Cancel</a>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  $(document).ready(function() {
+    // Auto-format price inputs
+    $('input[type="number"]').on('blur', function() {
+      const value = parseFloat(this.value);
+      if (!isNaN(value) && value >= 0) {
+        this.value = value.toFixed(2);
+      }
+    });
+
+    // Moodle courses Select2
+    $('#moodle_course_id').select2({
+      placeholder: 'Search Moodle courses',
+      allowClear: true,
+      ajax: {
+        url: '/moodle/courses',
+        transport: function (params, success, failure) {
+          $.ajax({
+            url: params.url,
+            headers: { 'Accept': 'application/json' }
+          }).then(success).fail(failure);
+        },
+        processResults: function (data) {
+          const rows = (data && (data.data || data)) || [];
+          const results = rows.map(function (c) {
+            return { id: c.id, text: (c.fullname || c.shortname || ('Course ' + c.id)) + ' (#' + c.id + ')' };
+          });
+          return { results: results };
+        }
+      }
+    });
+  });
+</script>
+
+<%- include('../../../partials/footer') %>

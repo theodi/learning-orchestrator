@@ -920,6 +920,16 @@ table tr {
   color: var(--color-dark-grey);
 }
 
+.dt-length {
+  float: left;
+}
+.dt-search {
+  float: right;
+}
+.dt-length select, .dt-length label, .dt-search input, .dt-search label {
+  display: inline-block;
+}
+
 /* Responsive adjustments for home page */
 @media screen and (max-width: 768px) {
   .welcome-container {

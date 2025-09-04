@@ -89,7 +89,7 @@ export class HubSpotController extends BaseController {
       if (validation) return validation;
 
       const payload = { ...req.body };
-      console.log('Self-paced form submission:', payload);
+      //console.log('Self-paced form submission:', payload);
 
       // Create HubSpot deal for self-paced course
       let dealResult = null;
@@ -242,7 +242,7 @@ export class HubSpotController extends BaseController {
       }
 
       const event = this.hubspotService.handleWebhook(req);
-      console.log('Valid webhook received:', event);
+      //console.log('Valid webhook received:', event);
 
       return res.status(HTTP_STATUS.OK).send('Webhook received');
     } catch (error) {
@@ -292,10 +292,179 @@ export class HubSpotController extends BaseController {
     }
   }
 
+  // Get courses (products with type "Learning Course")
+  async getCourses(req, res) {
+    try {
+      const acceptHeader = req.get('accept') || '';
+      if (acceptHeader.includes('application/json')) {
+        const data = await this.hubspotService.fetchCourses();
+        return this.sendSuccess(res, data);
+      }
+
+      return this.renderPage(req, res, 'pages/hubspot/courses/index', {
+        title: 'HubSpot Courses',
+        data: [],
+        type: 'courses',
+        endpoint: '/hubspot/courses'
+      });
+    } catch (error) {
+      return this.sendError(res, 'Failed to fetch courses');
+    }
+  }
+
+  // Get single course
+  async getCourse(req, res) {
+    try {
+      const { id } = req.params;
+      const acceptHeader = req.get('accept') || '';
+      
+      if (acceptHeader.includes('application/json')) {
+        const course = await this.hubspotService.getProduct(id);
+        return this.sendSuccess(res, course);
+      }
+
+      const course = await this.hubspotService.getProduct(id);
+      const portalId = process.env.HUBSPOT_PORTAL_ID || '748510';
+      const moodleRoot = process.env.MOODLE_ROOT || 'https://moodle.learndata.info';
+      return this.renderPage(req, res, 'pages/hubspot/courses/show', {
+        title: `Course: ${course.name}`,
+        course: course,
+        portalId: portalId,
+        moodleRoot: moodleRoot
+      });
+    } catch (error) {
+      return this.sendError(res, error.message);
+    }
+  }
+
+  // Show course creation form
+  async showCreateCourse(req, res) {
+    return this.renderPage(req, res, 'pages/hubspot/courses/edit', {
+      title: 'Create New Course',
+      course: {
+        name: '',
+        description: '',
+        price: '',
+        sku: '',
+        billing_period: '',
+        enrollment_duration_months: '',
+        moodle_course_id: '',
+        learning_price_members: '',
+        price_gov_campus: '',
+        notes: '',
+        learning_course_type: ''
+      }
+    });
+  }
+
+  // Show course edit form
+  async showEditCourse(req, res) {
+    try {
+      const { id } = req.params;
+      const course = await this.hubspotService.getProduct(id);
+      
+      return this.renderPage(req, res, 'pages/hubspot/courses/edit', {
+        title: `Edit Course: ${course.name}`,
+        course: {
+          ...course,
+          enrollment_duration_months: course.billing_period || ''
+        }
+      });
+    } catch (error) {
+      return this.sendError(res, error.message);
+    }
+  }
+
+  // Create new course
+  async createCourse(req, res) {
+    try {
+      const acceptHeader = req.get('accept') || '';
+      
+      const courseData = {
+        name: req.body.name,
+        type: 'Learning Course',
+        description: req.body.description || '',
+        price: req.body.price || '',
+        sku: req.body.sku || '',
+        billing_period: req.body.enrollment_duration_months || req.body.billing_period || '',
+        enrollment_duration_months: req.body.enrollment_duration_months || '',
+        moodle_course_id: req.body.moodle_course_id || '',
+        learning_price_members: req.body.learning_price_members || '',
+        price_gov_campus: req.body.price_gov_campus || '',
+        notes: req.body.notes || '',
+        learning_course_type: req.body.learning_course_type || ''
+      };
+
+      const result = await this.hubspotService.createProduct(courseData);
+      
+      if (acceptHeader.includes('application/json')) {
+        return this.sendSuccess(res, result, 'Course created successfully', HTTP_STATUS.CREATED);
+      }
+
+      // Redirect to the course view page
+      return res.redirect(`/hubspot/courses/${result.id}`);
+    } catch (error) {
+      if (req.get('accept')?.includes('application/json')) {
+        return this.sendError(res, error.message);
+      }
+      
+      // Re-render form with error
+      return this.renderPage(req, res, 'pages/hubspot/courses/edit', {
+        title: 'Create New Course',
+        course: req.body,
+        error: error.message
+      });
+    }
+  }
+
+  // Update existing course
+  async updateCourse(req, res) {
+    try {
+      const { id } = req.params;
+      const acceptHeader = req.get('accept') || '';
+      
+      const courseData = {
+        name: req.body.name,
+        type: 'Learning Course',
+        description: req.body.description || '',
+        price: req.body.price || '',
+        sku: req.body.sku || '',
+        billing_period: req.body.enrollment_duration_months || req.body.billing_period || '',
+        enrollment_duration_months: req.body.enrollment_duration_months || '',
+        moodle_course_id: req.body.moodle_course_id || '',
+        learning_price_members: req.body.learning_price_members || '',
+        price_gov_campus: req.body.price_gov_campus || '',
+        notes: req.body.notes || '',
+        learning_course_type: req.body.learning_course_type || ''
+      };
+
+      const result = await this.hubspotService.updateProduct(id, courseData);
+      
+      if (acceptHeader.includes('application/json')) {
+        return this.sendSuccess(res, result, 'Course updated successfully');
+      }
+
+      // Redirect to the course view page
+      return res.redirect(`/hubspot/courses/${id}`);
+    } catch (error) {
+      if (req.get('accept')?.includes('application/json')) {
+        return this.sendError(res, error.message);
+      }
+      
+      // Re-render form with error
+      const course = { id: req.params.id, ...req.body };
+      return this.renderPage(req, res, 'pages/hubspot/courses/edit', {
+        title: `Edit Course: ${course.name}`,
+        course: course,
+        error: error.message
+      });
+    }
+  }
+
   // Handle webhook form (external)
   async handleWebhookForm(req, res) {
     try {
-      console.log('[Webhook] Incoming HubSpot form payload:', JSON.stringify({ query: req.query, body: req.body }, null, 2));
+      //console.log('[Webhook] Incoming HubSpot form payload:', JSON.stringify({ query: req.query, body: req.body }, null, 2));
       const apiKey = req.headers['x-api-key'] || req.query.api_key;
       
       if (!validateApiKey(apiKey, process.env.WEBHOOK_API_KEY)) {
@@ -320,9 +489,9 @@ export class HubSpotController extends BaseController {
       if (validation) return validation;
 
       const taskData = this.buildTaskData(req.body, project_id);
-      console.log('[Webhook] Creating Forecast task with payload:', JSON.stringify(taskData, null, 2));
+      //console.log('[Webhook] Creating Forecast task with payload:', JSON.stringify(taskData, null, 2));
       const result = await this.forecastService.createTask(taskData);
-      console.log('[Webhook] Forecast task created:', JSON.stringify(result, null, 2));
+      //console.log('[Webhook] Forecast task created:', JSON.stringify(result, null, 2));
 
       return this.sendSuccess(res, {
         id: result?.id,
