@@ -1,0 +1,299 @@
+<%- include('../../partials/header') %>
+
+<section class="content-block light-grey">
+  <div class="container">
+    <div class="jumbotron">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-primary text-center"><span class="fa fa-book"></span> New Self-Paced Course Booking</h1>
+        <a href="/" class="btn btn-secondary">
+          <span class="fa fa-home"></span> Home
+        </a>
+      </div>
+
+      <form id="selfPacedForm">
+        <div class="form-group">
+          <label style="min-width:200px;">Pipeline:</label>
+          <select name="pipeline" id="pipeline" required>
+            <option value="">-- Select Pipeline --</option>
+            <% (pipelines || []).forEach(p => { %>
+              <option value="<%= p.id %>" <%= p.id === defaultPipelineId ? 'selected' : '' %>><%= p.label %></option>
+            <% }) %>
+          </select>
+        </div>
+
+        <br/>
+        <label for="subClientSelect" class="col-form-label">Organisation Name:</label><br/>
+        <div style="background-color:#fff;width:50%;padding-top:1%;">
+          <select id="subClientSelect" name="sub_client" style="background-color:white;width:100%;">
+            <option value="">-- Select --</option>
+          </select>
+        </div>
+        <input type="hidden" name="client_name" id="clientNameField" value="">
+
+        <br/>
+        <div class="form-group">
+          <label>Booking Reference Number (optional):</label>
+          <input type="text" name="booking_ref" class="form-control" style="max-width:320px;">
+        </div>
+
+        <br/>
+        <div class="form-group">
+          <label>Primary contact:</label>
+          <div style="background-color:white;width:32%;padding-top:1%;">
+            <select id="primaryContact" name="primary_contact_name" style="background-color:white;width:100%;"></select>
+          </div>
+          <small class="text-muted">Search existing contacts or type a new name.</small>
+        </div>
+        <div class="form-group">
+          <label>Primary Contact Email:</label>
+          <input type="email" id="primaryContactEmail" name="primary_contact_email" class="form-control" style="max-width:360px;" required>
+          <input type="hidden" id="primaryContactId" name="primary_contact_id" value="">
+        </div>
+
+        <br/>
+        <div class="form-group">
+          <label>Form Completed By:</label>
+          <div class="d-flex" style="gap:12px;max-width:720px;">
+            <input type="text" name="completed_by_name" class="form-control" value="<%= userName %>" required readonly>
+            <input type="email" name="completed_by_email" class="form-control" value="<%= userEmail %>" required readonly>
+          </div>
+        </div>
+
+        <hr/>
+        <h3>Courses</h3>
+        <p class="text-muted">Add one or more self-paced courses and set the price for each. Total will be the sum of line items.</p>
+        <table class="table" id="coursesTable" style="max-width:960px;">
+          <thead>
+            <tr>
+              <th style="width:60%">Course</th>
+              <th style="width:20%">Total Price (£)</th>
+              <th style="width:20%"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <button type="button" id="addCourse" class="btn btn-default">Add course</button>
+
+        <div class="mt-3"><strong>Total: £<span id="totalValue">0.00</span></strong></div>
+
+        <hr/>
+        <h3>Learners</h3>
+        <p class="text-muted">Add learners to be enrolled (name and email). We will match or create contacts in HubSpot and associate them to the deal as “Learner”.</p>
+        <table class="table" id="learnersTable" style="max-width:960px;">
+          <thead>
+            <tr>
+              <th style="width:40%">Name</th>
+              <th style="width:40%">Email</th>
+              <th style="width:20%"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <button type="button" id="addLearner" class="btn btn-default">Add learner</button>
+
+        <br/><br/>
+        <button type="submit" class="btn btn-primary" id="submitBtn">Create booking</button>
+        <div id="creatingStatus" class="alert alert-info mt-2" style="display:none;">
+          <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+          Creating deal…
+        </div>
+      </form>
+
+      <div id="resultBox" class="alert mt-3" style="display:none;"></div>
+    </div>
+  </div>
+</section>
+
+<script type="module">
+  const qs = (sel, ctx=document) => ctx.querySelector(sel);
+  const qsa = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
+
+  const asCurrency = (n) => (Number(n||0)).toFixed(2);
+
+  function recalcTotal() {
+    const rows = qsa('#coursesTable tbody tr');
+    let total = 0;
+    rows.forEach(r => {
+      const price = Number(qs('input[name="price"]', r)?.value || 0) || 0;
+      total += price;
+    });
+    qs('#totalValue').textContent = asCurrency(total);
+  }
+
+  function addCourseRow(data={}) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>
+        <select name="product_id" class="form-control" style="width:100%">
+          <option value="">-- Select --</option>
+          <% (courses || []).forEach(function(c){ %>
+            <option value="<%= c.id %>"><%= c.name %></option>
+          <% }); %>
+        </select>
+      </td>
+      <td>
+        <input type="number" name="price" class="form-control" value="${data.price||''}" min="0" step="0.01" required>
+      </td>
+      <td>
+        <button type="button" class="btn btn-link text-danger removeRow">Remove</button>
+      </td>`;
+    qs('#coursesTable tbody').appendChild(tr);
+    initCourseSelect(qs('select.courseSelect', tr));
+    qs('input[name="price"]', tr).addEventListener('blur', (e)=>{ const v = parseFloat(e.target.value); if(!isNaN(v)) e.target.value = v.toFixed(2); recalcTotal(); });
+    qs('.removeRow', tr).addEventListener('click', ()=>{ tr.remove(); recalcTotal(); });
+  }
+
+  function addLearnerRow(data={}) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" name="learner_name" class="form-control" value="${data.name||''}" placeholder="Full name"></td>
+      <td><input type="email" name="learner_email" class="form-control" value="${data.email||''}" placeholder="name@example.com"></td>
+      <td><button type="button" class="btn btn-link text-danger removeRow">Remove</button></td>`;
+    qs('#learnersTable tbody').appendChild(tr);
+    qs('.removeRow', tr).addEventListener('click', ()=> tr.remove());
+  }
+
+  // No Select2 for course rows; plain dropdown rendered server-side
+  function initCourseSelect() {}
+
+  function initCompanySelect() {
+    const jq = window.jQuery || window.$;
+    if (!jq || !jq.fn || !jq.fn.select2) return;
+    const el = jq('#subClientSelect');
+    el.select2({
+      theme: 'bootstrap4',
+      placeholder: 'Click to search company…',
+      minimumInputLength: 2,
+      ajax: {
+        url: '/hubspot/companies/search',
+        delay: 300,
+        data: (params) => ({ q: params.term ?? '' }),
+        processResults: (data) => {
+          const companies = data?.data || data || [];
+          return { results: companies.map(c => ({ id: c.id, text: c.name })) };
+        }
+      }
+    });
+    el.on('change', () => {
+      const opt = el.find(':selected');
+      const txt = opt?.text() || '';
+      const input = document.getElementById('clientNameField');
+      if (input) input.value = txt.trim();
+    });
+  }
+
+  function initPrimaryContactSelect() {
+    const jq = window.jQuery || window.$;
+    if (!jq || !jq.fn || !jq.fn.select2) return;
+    const el = jq('#primaryContact');
+    el.select2({
+      theme: 'bootstrap4',
+      placeholder: 'Search for existing contact or type to create new…',
+      tags: true,
+      minimumInputLength: 2,
+      createTag: (params) => {
+        if (/^[^\s]+\s+[^\s]+$/.test(params.term)) {
+          return { id: params.term, text: params.term + ' (New)', newOption: true };
+        }
+        return null;
+      },
+      ajax: {
+        url: '/hubspot/contacts/search',
+        delay: 300,
+        data: (params) => ({ q: params.term ?? '' }),
+        processResults: (data) => {
+          const contacts = data?.data || data || [];
+          return {
+            results: contacts.map(c => ({ id: c.id, text: `${c.first_name} ${c.last_name}`, email: c.email, contactId: c.id }))
+          };
+        }
+      },
+      templateResult: (d) => d.newOption ? jq(`<span style=\"color:#28a745;\"><i class=\"fa fa-plus-circle\"></i> ${d.text}</span>`) : d.text,
+      templateSelection: (d) => d.newOption ? jq(`<span style=\"color:#28a745;\">${d.text}</span>`) : (d.text || d.id)
+    });
+
+    el.on('select2:select', (e) => {
+      const d = e.params.data;
+      if (d?.newOption) {
+        document.getElementById('primaryContactEmail').value = '';
+        document.getElementById('primaryContactId').value = '';
+      } else {
+        document.getElementById('primaryContactEmail').value = d.email || '';
+        document.getElementById('primaryContactId').value = d.contactId || '';
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    initCompanySelect();
+    initPrimaryContactSelect();
+    addCourseRow();
+    addLearnerRow();
+    document.getElementById('addCourse').addEventListener('click', addCourseRow);
+    document.getElementById('addLearner').addEventListener('click', addLearnerRow);
+
+    document.getElementById('selfPacedForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      const box = document.getElementById('resultBox');
+      const creating = document.getElementById('creatingStatus');
+      btn.disabled = true; btn.style.display = 'none';
+      box.style.display = 'none'; box.className = 'alert'; box.textContent='';
+      creating.className = 'alert alert-info mt-2';
+      creating.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Creating deal…';
+      creating.style.display = 'block';
+
+      const lineItems = qsa('#coursesTable tbody tr').map(tr => ({
+        product_id: qs('select[name=\"product_id\"]', tr)?.value || '',
+        name: qs('select[name=\"product_id\"] option:checked', tr)?.textContent || 'Self-Paced Course',
+        quantity: '1',
+        price: qs('input[name=\"price\"]', tr)?.value || '0'
+      })).filter(i => i.product_id || Number(i.price) > 0);
+
+      const learners = qsa('#learnersTable tbody tr').map(tr => ({
+        name: qs('input[name=\"learner_name\"]', tr)?.value || '',
+        email: qs('input[name=\"learner_email\"]', tr)?.value || ''
+      })).filter(l => l.name || l.email);
+
+      const payload = {
+        pipeline: qs('#pipeline').value,
+        sub_client: qs('#subClientSelect')?.value || '',
+        client_name: document.getElementById('clientNameField')?.value || (function(){ const sel = qs('#subClientSelect'); const txt = sel && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : ''; return (txt||'').trim(); })(),
+        booking_ref: document.querySelector('input[name="booking_ref"]').value,
+        primary_contact_name: (window.jQuery || window.$)('#primaryContact').val(),
+        primary_contact_email: document.getElementById('primaryContactEmail').value,
+        primary_contact_id: document.getElementById('primaryContactId').value,
+        completed_by_name: document.querySelector('input[name="completed_by_name"]').value,
+        completed_by_email: document.querySelector('input[name="completed_by_email"]').value,
+        line_items: lineItems,
+        learners: learners
+      };
+
+      try {
+        const res = await fetch('/self-paced-bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (!res.ok || json.success === false) throw new Error(json.message || 'Failed to create booking');
+        const dealUrl = json?.data?.url;
+        creating.style.display = 'none';
+        box.classList.add('alert-success');
+        box.innerHTML = dealUrl ? `Created deal: <a href="${dealUrl}" target="_blank">Open in HubSpot</a>` : 'Created deal';
+        box.style.display = 'block';
+      } catch (err) {
+        creating.style.display = 'none';
+        box.classList.add('alert-danger');
+        box.textContent = err.message || 'Failed to create booking';
+        box.style.display = 'block';
+      } finally {
+        btn.disabled = false; btn.style.display = 'inline-block';
+      }
+    });
+  });
+</script>
+
+<%- include('../../partials/footer') %>
+
+

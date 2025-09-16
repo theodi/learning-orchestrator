@@ -12,6 +12,102 @@ export class EnrollmentService {
     return crypto.randomBytes(32).toString('hex');
   }
 
+  // Check enrollment/access status for a user in a course
+  async getUserCourseStatus(courseId, email) {
+    try {
+      const normalizedEmail = (email || '').toLowerCase().trim();
+      if (!courseId || !normalizedEmail) {
+        throw new Error('course_id and email are required');
+      }
+
+      // Fetch Moodle enrollments and attempt to locate user
+      const moodleEnrollments = await this.moodleService.getCourseEnrolments(parseInt(courseId));
+
+      // Match by email primarily; fallback to Moodle user lookup by email
+      let moodleUser = null;
+      if (normalizedEmail) {
+        moodleUser = moodleEnrollments.find(u => (u.email || '').toLowerCase() === normalizedEmail);
+      }
+
+      // If not present in course enrolments, try to resolve Moodle user by email for details
+      let moodleUserId = moodleUser ? moodleUser.id : null;
+      if (!moodleUserId) {
+        try {
+          const lookedUp = await this.moodleService.lookupUserByEmail(normalizedEmail);
+          moodleUserId = lookedUp ? lookedUp.id : null;
+        } catch (_) {
+          moodleUserId = null;
+        }
+      }
+
+      // Enrolled if present in course enrolments OR details returned for this user+course
+      let enrolled = Boolean(moodleUser);
+
+      // Prefer authoritative per-user enrollment details from Moodle
+      let hasMoodleAccess = false;
+      try {
+        if (moodleUserId) {
+          const details = await this.moodleService.getUserEnrollmentDetails(parseInt(moodleUserId, 10), parseInt(courseId, 10));
+          if (details) {
+            enrolled = true; // details present implies enrollment in course
+            // Accessed ONLY if lastCourseAccess is present
+            hasMoodleAccess = Boolean(details.lastCourseAccess);
+          } else if (moodleUser) {
+            // Fallback to raw enrolment list timestamps if details not available
+            const lastCourseAccessTs = parseInt(moodleUser.lastcourseaccess || 0, 10);
+            // Accessed ONLY if lastcourseaccess > 0
+            hasMoodleAccess = lastCourseAccessTs > 0;
+          }
+        }
+      } catch (e) {
+        // Non-fatal; keep hasMoodleAccess as computed
+        hasMoodleAccess = Boolean(hasMoodleAccess);
+      }
+
+      const accessed = hasMoodleAccess;
+
+      const result = { enrolled, accessed };
+
+      // If not enrolled, attempt to auto-enrol the user directly in Moodle using their email
+      if (!enrolled) {
+        try {
+          const lookedUp = await this.moodleService.lookupUserByEmail(normalizedEmail);
+          if (lookedUp && lookedUp.id) {
+            // Use default duration from config or 12 months
+            const enrolResult = await this.moodleService.enrolUserInCourse(lookedUp.id, parseInt(courseId, 10), 12);
+            if (enrolResult && enrolResult.success) {
+              // Confirm enrolment and access
+              const details = await this.moodleService.getUserEnrollmentDetails(lookedUp.id, parseInt(courseId, 10));
+              result.enrolled = Boolean(details);
+              result.accessed = Boolean(details && details.lastCourseAccess);
+              return result;
+            }
+          }
+        } catch (_) {
+          // Swallow errors to keep endpoint idempotent; client can retry later
+        }
+
+        // As a courtesy, if a pending enrollment exists in DB, include verification info
+        try {
+          const pending = await Enrollment.findOne({
+            course_id: parseInt(courseId),
+            user_email: normalizedEmail,
+            status: 'pending_account_creation'
+          });
+          if (pending && pending.secret_token) {
+            result.verification_token = pending.secret_token;
+            result.verification_path = `/enrollments/verify/${pending.secret_token}`;
+          }
+        } catch (_) {}
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error checking user course status:', error.message);
+      throw error;
+    }
+  }
+
   // Create enrollment record
   async createEnrollment(userEmail, courseId, courseName, durationMonths) {
     try {
@@ -146,36 +242,32 @@ export class EnrollmentService {
       const enrollments = await Enrollment.find({ course_id: courseId })
         .sort({ enrollment_date: -1 });
 
-      // Sync with Moodle for existing enrollments
+      // Fetch Moodle enrolments for the course
       const moodleEnrollments = await this.moodleService.getCourseEnrolments(courseId);
-      
+
+      // Sync Moodle data into existing DB-backed enrollments
       for (const enrollment of enrollments) {
         if (enrollment.moodle_user_id && enrollment.status === 'enrolled') {
-          // For enrolled users, get detailed enrollment data from Moodle
           const moodleEnrollmentDetails = await this.moodleService.getUserEnrollmentDetails(
-            enrollment.moodle_user_id, 
+            enrollment.moodle_user_id,
             enrollment.course_id
           );
-          
+
           if (moodleEnrollmentDetails) {
-            // Update with Moodle data (authoritative source)
             enrollment.moodle_first_access = moodleEnrollmentDetails.firstAccess;
             enrollment.moodle_last_access = moodleEnrollmentDetails.lastAccess;
             enrollment.moodle_last_course_access = moodleEnrollmentDetails.lastCourseAccess;
             enrollment.last_moodle_sync = new Date();
-            
-            // Update course name if it has changed in Moodle
+
             if (moodleEnrollmentDetails.courseName && moodleEnrollmentDetails.courseName !== enrollment.course_name) {
               enrollment.course_name = moodleEnrollmentDetails.courseName;
             }
-            
+
             await enrollment.save();
           } else {
-            // Fallback to basic sync if detailed data not available
             const moodleEnrollment = moodleEnrollments.find(m => m.id === enrollment.moodle_user_id);
             if (moodleEnrollment) {
-              enrollment.moodle_last_access = moodleEnrollment.lastaccess ? 
-                new Date(moodleEnrollment.lastaccess * 1000) : null;
+              enrollment.moodle_last_access = moodleEnrollment.lastaccess ? new Date(moodleEnrollment.lastaccess * 1000) : null;
               enrollment.last_moodle_sync = new Date();
               await enrollment.save();
             }
@@ -183,7 +275,45 @@ export class EnrollmentService {
         }
       }
 
-      return enrollments;
+      // Build quick lookup sets for deduplication by Moodle user id and email
+      const existingByMoodleId = new Set(
+        enrollments.filter(e => e.moodle_user_id).map(e => e.moodle_user_id)
+      );
+      const existingByEmail = new Set(
+        enrollments.filter(e => e.user_email).map(e => e.user_email.toLowerCase())
+      );
+
+      // Add Moodle-only enrolments (not in Mongo) to the returned list as virtual rows
+      const virtualRows = [];
+      for (const m of moodleEnrollments) {
+        const moodleId = m.id;
+        const email = (m.email || '').toLowerCase();
+
+        // Skip if already represented by DB enrollment
+        if ((moodleId && existingByMoodleId.has(moodleId)) || (email && existingByEmail.has(email))) {
+          continue;
+        }
+
+        // Normalize Moodle fields to our view model
+        virtualRows.push({
+          _id: null,
+          user_email: email || m.username || `moodle-user-${moodleId}`,
+          status: 'enrolled',
+          course_id: parseInt(courseId),
+          course_name: null,
+          duration_months: null,
+          expiry_date: null,
+          secret_token: null,
+          moodle_user_id: moodleId || null,
+          last_moodle_sync: new Date(),
+          moodle_first_access: m.firstaccess ? new Date(m.firstaccess * 1000) : null,
+          moodle_last_access: m.lastaccess ? new Date(m.lastaccess * 1000) : null,
+          moodle_last_course_access: m.lastcourseaccess ? new Date(m.lastcourseaccess * 1000) : null
+        });
+      }
+
+      // Return merged list: DB enrollments first (sorted), then Moodle-only virtual rows
+      return [...enrollments, ...virtualRows];
     } catch (error) {
       console.error('Error fetching course enrollments:', error.message);
       throw error;

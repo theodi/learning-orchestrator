@@ -49,9 +49,9 @@
             <label class="" style="min-width: 200px;">Course Name:</label>
             <select name="course_id" id="courseNameSelect" class="" required>
               <option value="">-- Select --</option>
-              <% products.forEach(product => { %>
+              <% products.forEach(product => { if (product && product.learning_course_type === 'Tutor led') { %>
                 <option value="<%= product.id %>" data-name="<%= product.name %>"><%= product.name %></option>
-              <% }) %>
+              <% } }) %>
             </select>
             <input type="hidden" name="course_name" id="courseNameDisplay" value="">
             <br/>

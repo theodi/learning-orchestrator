@@ -186,8 +186,16 @@ app.use("/moodle", ensureAuthenticated, moodleRoutes);
 import enrollmentVerificationRoutes from "./routes/enrollmentVerification.js";
 app.use("/enrollments/verify", enrollmentVerificationRoutes);
 
+// Public status check: ?course_id=123&email=user@example.com
+import EnrollmentController from "./controllers/EnrollmentController.js";
+const publicEnrollmentController = new EnrollmentController();
+app.get('/enrollments/status', (req, res) => publicEnrollmentController.getUserCourseStatus(req, res));
+
 import enrollmentRoutes from "./routes/enrollments.js";
 app.use("/enrollments", ensureAuthenticated, enrollmentRoutes);
+
+import selfPacedBookingsRoutes from "./routes/selfPacedBookings.js";
+app.use("/self-paced-bookings", ensureAuthenticated, selfPacedBookingsRoutes);
 
 // Webhooks (public, authenticated by API key inside controller)
 import webhooksRoutes from "./routes/webhooks.js";

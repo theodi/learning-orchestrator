@@ -513,6 +513,7 @@ export class HubSpotService {
         course_name: dealData.courseName, // Custom property for course name
         course_date: dealData.startDate, // Custom property for course date
         hubspot_owner_id: dealData.ownerId, // Deal owner ID
+        ...(dealData.courseType ? { course_type: dealData.courseType } : {}),
       },
     };
 
@@ -592,6 +593,87 @@ export class HubSpotService {
   }
 
   /**
+ * Set association labels between two CRM objects (v4 API)
+ * - Ensures the association exists (creates with proper spec array)
+ * - If created with a USER_DEFINED type (which has a label), skips /labels
+ * - If created with HUBSPOT_DEFINED, uses /labels to apply labels
+ * - fromType/toType must be plural API names ("deals", "contacts", etc.)
+ */
+async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
+  const assocBase = `${this.baseUrl}/crm/v4/objects/${fromType}/${fromId}/associations/${toType}/${toId}`;
+  const labelsUrl = `${assocBase}/labels`;
+  const typesUrl  = `${this.baseUrl}/crm/v4/associations/${fromType}/${toType}/labels`;
+
+  // 0) Fetch available association defs (category, typeId, label)
+  let createSpec = null;
+  try {
+    const typesRes = await axios.get(typesUrl, { headers: this.headers });
+    const defs = (typesRes?.data?.results || []).map(d => ({
+      associationCategory: d.category,   // 'HUBSPOT_DEFINED' or 'USER_DEFINED'
+      associationTypeId: d.typeId,
+      label: d.label || null
+    }));
+
+    const desiredLabel = labels.length === 1 ? labels[0] : null;
+
+    // Prefer a user-defined type matching the desired label; else hubspot-defined; else first available
+    createSpec =
+      (desiredLabel && defs.find(d => d.label === desiredLabel)) ||
+      defs.find(d => d.associationCategory === 'HUBSPOT_DEFINED') ||
+      defs[0];
+
+    if (!createSpec?.associationTypeId) {
+      throw new Error('No valid association type found for this object pair.');
+    }
+  } catch (err) {
+    console.error('[HS] Failed to fetch/match association types', err?.response?.status, err?.response?.data || err.message);
+    throw new Error('Cannot determine associationTypeId for create call.');
+  }
+
+  // 1) Ensure the association exists (PUT with ARRAY body of specs)
+  let createdWithUserDefinedLabel = createSpec.associationCategory === 'USER_DEFINED' && !!createSpec.label;
+  try {
+    const res = await axios.put(assocBase, [createSpec], { headers: this.headers });
+
+    // If API echoes labels, trust that
+    if (Array.isArray(res.data?.labels) && res.data.labels.length > 0) {
+      createdWithUserDefinedLabel = true;
+    }
+  } catch (err) {
+    const code = err?.response?.status;
+    const data = err?.response?.data;
+    console.error('[HS] Association create failed', code, data);
+    if (code !== 409) {
+      throw new Error(`Failed to create association: ${code || err.message}`);
+    }
+  }
+
+  // 2) Only call /labels when needed:
+  // - If we created using HUBSPOT_DEFINED (no label), attach labels here
+  // - If we used USER_DEFINED (label already applied), skip to avoid 404
+  if (!createdWithUserDefinedLabel) {
+    try {
+      const res = await axios.put(labelsUrl, { labels }, { headers: this.headers });
+      return true;
+    } catch (err) {
+      const code = err?.response?.status;
+      const data = err?.response?.data;
+      console.error('[HS] Set labels failed', code, data, { url: labelsUrl, payload: { labels } });
+
+      if (code === 400 || code === 404) {
+        console.error(
+          '[HS] Hint: Ensure each label exists in HubSpot (Settings → Objects → Deals → Associations → Contacts → Manage labels),' +
+          ' check exact case/spelling, and confirm your Private App has crm.objects.associations.write.'
+        );
+      }
+      return false;
+    }
+  } else {
+    return true;
+  }
+}
+
+  /**
    * Create line item for deal with product
    */
   async createLineItemForDeal(dealId, productId, dealData) {
@@ -622,6 +704,36 @@ export class HubSpotService {
       return lineItemId;
     } catch (error) {
       console.error("Error creating line item for deal:", error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Create line item for deal with custom name/price/quantity and optional productId
+   */
+  async createLineItemForDealWithOverrides(dealId, { productId = null, name, price, quantity = '1' }) {
+    try {
+      const lineItemData = {
+        properties: {
+          name: name || 'Line item',
+          price: price,
+          quantity: String(quantity)
+        }
+      };
+      if (productId) {
+        lineItemData.properties.hs_product_id = productId;
+      }
+
+      const lineItemUrl = `${this.baseUrl}/crm/v3/objects/line_items`;
+      const lineItemResponse = await axios.post(lineItemUrl, lineItemData, { headers: this.headers });
+      const lineItemId = lineItemResponse.data.id;
+
+      const associationUrl = `${this.baseUrl}/crm/v3/objects/deals/${dealId}/associations/line_items/${lineItemId}/deal_to_line_item`;
+      await axios.put(associationUrl, {}, { headers: this.headers });
+
+      return lineItemId;
+    } catch (error) {
+      console.error('Error creating line item with overrides:', error.response?.data || error.message);
       throw error;
     }
   }

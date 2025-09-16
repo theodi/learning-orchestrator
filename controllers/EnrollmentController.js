@@ -1,6 +1,8 @@
 import BaseController from './BaseController.js';
 import { EnrollmentService } from '../services/enrollmentService.js';
 import { MoodleService } from '../services/moodleService.js';
+import { validateApiKey } from '../utils/validation.js';
+import { HTTP_STATUS } from '../config/constants.js';
 
 export class EnrollmentController extends BaseController {
   constructor() {
@@ -119,6 +121,29 @@ export class EnrollmentController extends BaseController {
       });
     } catch (error) {
       return this.sendError(res, error.message);
+    }
+  }
+
+  // Public: check user enrollment/access status in a course
+  async getUserCourseStatus(req, res) {
+    try {
+      const { course_id, email } = req.query;
+
+      if (!course_id || !email) {
+        return res.status(400).json({ error: 'Missing required parameters: course_id, email' });
+      }
+
+      // API key protection (header x-api-key or query api_key)
+      const apiKey = req.headers['x-api-key'] || req.query.api_key;
+      if (!validateApiKey(apiKey, process.env.WEBHOOK_API_KEY)) {
+        return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Forbidden: Invalid API key' });
+      }
+
+      const status = await this.enrollmentService.getUserCourseStatus(parseInt(course_id), email);
+      // Return raw data only
+      return res.json(status);
+    } catch (error) {
+      return res.status(500).json({ error: error.message || 'Internal Server Error' });
     }
   }
 
