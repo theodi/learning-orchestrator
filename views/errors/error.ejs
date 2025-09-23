@@ -1,9 +1,257 @@
 <%- include('../partials/header') %>
-<section class="light-grey padded" style="min-height: 100vh;">
-<div class="container box">
-    <div class="error">
-        <h1><span class="fa fa-exclamation-circle"></span><%= statusCode %>: <%= errorMessage %></h1>
+
+<style>
+.error-container {
+  min-height: 80vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 0;
+}
+
+.error-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(7, 37, 137, 0.1);
+  padding: 3rem;
+  max-width: 600px;
+  width: 100%;
+  text-align: center;
+  border: 1px solid #E2E6E9;
+}
+
+.error-icon {
+  font-size: 4rem;
+  margin-bottom: 1.5rem;
+  display: block;
+}
+
+.error-404 .error-icon {
+  color: #F37533;
+}
+
+.error-500 .error-icon {
+  color: #F467C0;
+}
+
+.error-403 .error-icon {
+  color: #F37533;
+}
+
+.error-401 .error-icon {
+  color: #F37533;
+}
+
+.error-code {
+  font-size: 3rem;
+  font-weight: bold;
+  color: #072589;
+  margin-bottom: 0.5rem;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+.error-title {
+  font-size: 1.5rem;
+  color: #333333;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.error-message {
+  color: #666666;
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.error-suggestions {
+  background: #F8F9FA;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  text-align: left;
+}
+
+.error-suggestions h4 {
+  color: #072589;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.error-suggestions ul {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.error-suggestions li {
+  margin-bottom: 0.5rem;
+  color: #555555;
+}
+
+.error-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.error-actions .btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-primary {
+  background: #072589;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #051a5c;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: #E2E6E9;
+  color: #072589;
+}
+
+.btn-secondary:hover {
+  background: #d1d5d8;
+  transform: translateY(-1px);
+}
+
+.btn-home {
+  background: #1DD3A7;
+  color: white;
+}
+
+.btn-home:hover {
+  background: #18b894;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+  .error-card {
+    margin: 1rem;
+    padding: 2rem;
+  }
+  
+  .error-actions {
+    flex-direction: column;
+  }
+  
+  .error-actions .btn {
+    width: 100%;
+  }
+}
+</style>
+
+<section class="light-grey padded">
+  <div class="error-container">
+    <div class="error-card <%= statusCode === 404 ? 'error-404' : statusCode >= 500 ? 'error-500' : 'error-400' %>">
+      
+      <% if (statusCode === 404) { %>
+        <span class="error-icon">🔍</span>
+        <div class="error-code">404</div>
+        <div class="error-title">Page Not Found</div>
+        <div class="error-message">
+          The page you're looking for doesn't exist or has been moved.
+        </div>
+        
+        <div class="error-suggestions">
+          <h4>What you can try:</h4>
+          <ul>
+            <li>Check the URL for typos</li>
+            <li>Go back to the previous page</li>
+            <li>Use the navigation menu above</li>
+            <li>Return to the homepage</li>
+          </ul>
+        </div>
+        
+        <div class="error-actions">
+          <a href="javascript:history.back()" class="btn btn-secondary">← Go Back</a>
+          <a href="/" class="btn btn-home">🏠 Home</a>
+        </div>
+        
+      <% } else if (statusCode === 500) { %>
+        <span class="error-icon">⚠️</span>
+        <div class="error-code">500</div>
+        <div class="error-title">Internal Server Error</div>
+        <div class="error-message">
+          Something went wrong on our end. We're working to fix it.
+        </div>
+        
+        <div class="error-suggestions">
+          <h4>What you can try:</h4>
+          <ul>
+            <li>Refresh the page</li>
+            <li>Wait a few minutes and try again</li>
+            <li>Clear your browser cache</li>
+            <li>Contact support if the problem persists</li>
+          </ul>
+        </div>
+        
+        <div class="error-actions">
+          <a href="javascript:location.reload()" class="btn btn-primary">🔄 Refresh Page</a>
+          <a href="/" class="btn btn-home">🏠 Home</a>
+        </div>
+        
+      <% } else if (statusCode === 403) { %>
+        <span class="error-icon">🚫</span>
+        <div class="error-code">403</div>
+        <div class="error-title">Access Forbidden</div>
+        <div class="error-message">
+          You don't have permission to access this resource.
+        </div>
+        
+        <div class="error-suggestions">
+          <h4>What you can try:</h4>
+          <ul>
+            <li>Log in with an account that has access</li>
+            <li>Contact your administrator for permissions</li>
+            <li>Go back to the previous page</li>
+          </ul>
+        </div>
+        
+        <div class="error-actions">
+          <a href="/auth/google" class="btn btn-primary">🔐 Login</a>
+          <a href="/" class="btn btn-home">🏠 Home</a>
+        </div>
+        
+      <% } else if (statusCode === 401) { %>
+        <span class="error-icon">🔒</span>
+        <div class="error-code">401</div>
+        <div class="error-title">Authentication Required</div>
+        <div class="error-message">
+          Please log in to access this page.
+        </div>
+        
+        <div class="error-actions">
+          <a href="/auth/google" class="btn btn-primary">🔐 Login</a>
+          <a href="/" class="btn btn-home">🏠 Home</a>
+        </div>
+        
+      <% } else { %>
+        <span class="error-icon">❌</span>
+        <div class="error-code"><%= statusCode %></div>
+        <div class="error-title">Error Occurred</div>
+        <div class="error-message">
+          <%= errorMessage || 'An unexpected error occurred.' %>
+        </div>
+        
+        <div class="error-actions">
+          <a href="javascript:history.back()" class="btn btn-secondary">← Go Back</a>
+          <a href="/" class="btn btn-home">🏠 Home</a>
+        </div>
+      <% } %>
+      
     </div>
-</div>
+  </div>
 </section>
+
 <%- include('../partials/footer') %>

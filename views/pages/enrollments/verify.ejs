@@ -1,0 +1,137 @@
+<%- include('../../partials/header') %>
+
+<section class="content-block light-grey">
+  <% if (typeof error !== 'undefined' && error) { %>
+    <div class="alert alert-danger">
+      <h1>Invalid Verification Link</h1>
+      <p><%= error %></p>
+      <p>Please check your email for the correct verification link or contact support.</p>
+    </div>
+  <% } else if (typeof enrollments !== 'undefined' && Array.isArray(enrollments)) { %>
+    <h1>Your Course Access</h1>
+    <p><strong>Email:</strong> <%= email %></p>
+
+    <% const anyEnrolled = enrollments.some(function(e){ return !!e.enrolled; }); %>
+    <% if (anyEnrolled) { %>
+      <div class="alert alert-success" role="alert">
+        <strong>You're good to go.</strong> Use the Go to Course buttons below to access Moodle. If you have trouble signing in, use the "Sign in with ODI Account" option or contact
+        <a href="mailto:training@theodi.org">training@theodi.org</a>.
+      </div>
+    <% } else { %>
+        <div class="card mt-4">
+          <div class="card-header">
+            <h3>Next Steps</h3>
+          </div>
+          <div class="card-body">
+            <ol>
+              <li>
+                <strong>Create an ODI Account</strong> (if you haven't already)
+                <br>
+                <a href="https://theodi.org/account/register/" target="_blank" class="btn btn-outline-primary btn-sm mt-2">
+                  <i class="fa fa-external-link"></i> Create ODI Account
+                </a>
+              </li>
+              <li>
+                <strong>Login to Moodle</strong> using your ODI account
+                <br>
+                <a href="<%= moodleRootUrl %>/login/index.php" target="_blank" class="btn btn-outline-primary btn-sm mt-2">
+                  <i class="fa fa-external-link"></i> Go to Moodle
+                </a>
+                <br>
+                <small class="text-muted">Use the "Sign in with ODI Account" option. If you have trouble signing in or accessing your course, email <a href="mailto:training@theodi.org">training@theodi.org</a>.</small>
+              </li>
+              <li>
+                <strong>Complete your enrollment</strong> by clicking the button below
+                <br>
+                <button id="completeEnrollmentBtn" class="btn btn-success btn-lg mt-3">
+                  <i class="fa fa-check"></i> Complete Enrollment
+                </button>
+              </li>
+            </ol>
+          </div>
+        </div>
+      <% } %>
+
+    <div class="card mt-3">
+      <div class="card-header">
+        <h3>Courses</h3>
+      </div>
+      <div class="card-body">
+        <% if (enrollments.length === 0) { %>
+          <div class="alert alert-warning">No courses found for this booking.</div>
+        <% } else { %>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Course</th>
+                <th>Enrolled</th>
+                <th>Accessed</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% enrollments.forEach(function(e){ %>
+                <tr>
+                  <td><%= e.course_name || ('Course #' + e.course_id) %></td>
+                  <td>
+                    <% if (e.enrolled) { %>
+                      <i class="fa fa-check text-success" aria-label="Enrolled: Yes" title="Enrolled: Yes">Yes</i>
+                    <% } else { %>
+                      <i class="fa fa-times text-muted" aria-label="Enrolled: No" title="Enrolled: No">No</i>
+                    <% } %>
+                  </td>
+                  <td>
+                    <% if (e.accessed) { %>
+                      <i class="fa fa-check text-success" aria-label="Accessed: Yes" title="Accessed: Yes">Yes</i>
+                    <% } else { %>
+                      <i class="fa fa-times text-muted" aria-label="Accessed: No" title="Accessed: No">No</i>
+                    <% } %>
+                  </td>
+                  <td>
+                    <% if (e.enrolled) { %>
+                      <a href="<%= moodleRootUrl %>/course/view.php?id=<%= e.course_id %>" target="_blank" class="btn btn-primary btn-sm">
+                        <i class="fa fa-external-link"></i> Go to Course
+                      </a>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+    </div>
+
+  <% } %>
+  <div class="card mt-4">
+    <div class="card-header">
+      <h3>Need Help?</h3>
+    </div>
+    <div class="card-body">
+      <p>If you're having trouble completing your enrollment:</p>
+      <ul>
+        <li>Make sure you've created an ODI account at <a href="https://theodi.org/account/register/" target="_blank">theodi.org</a></li>
+        <li>Ensure you can log into Moodle at <a href="<%= moodleRootUrl %>/login/index.php" target="_blank"><%= moodleRootUrl.replace(/^https?:\/\//, '') %></a></li>
+        <li>Use the "Sign in with ODI Account" option in Moodle</li>
+        <li>Contact support if you continue to have issues</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</section>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var btn = document.getElementById('completeEnrollmentBtn');
+  if (btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Re-checking...';
+      window.location.reload();
+    });
+  }
+});
+</script>
+
+<%- include('../../partials/footer') %>

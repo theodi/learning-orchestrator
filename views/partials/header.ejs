@@ -13,10 +13,10 @@
 
 <script type="text/javascript" src="/lib/jquery-3.7.1.min.js"></script>
 
-<link href="/lib/DataTables/datatables.min.css" rel="stylesheet">
 <link href="/css/water.css" rel="stylesheet">
 <link href="/css/bootstrap.min.css" rel="stylesheet">
 <link href="/css/glyphicon.css" rel="stylesheet">
+<link href="/lib/DataTables/datatables.min.css" rel="stylesheet">
 <link href="/css/style.css" rel="stylesheet">
 <link rel="shortcut icon" href="/images/odifavicon32.ico">
 <script src="/lib/jquery-3.7.1.min.js"></script>
@@ -47,17 +47,61 @@
 					<li class="has-submenu">
 						<span class="toggle-link">Browse</span>
 						<ul class="submenu">
-							<li><a href="/hubspot/products" class="toggle-link">Products</a></li>
-							<li><a href="/forecast/projects" class="toggle-link">Projects</a></li>
-							<li><a href="/forecast/labels" class="toggle-link">Labels</a></li>
-							<li><a href="/course-bookings" class="toggle-link">Bookings</a></li>
+							<li>
+								<a href="/hubspot/courses" class="toggle-link">
+									<img src="/lib/icons/hubspot.ico" alt="HubSpot" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">Courses
+								</a>
+							</li>
+							<!--<li>
+								<a href="/hubspot/products" class="toggle-link">
+									<img src="/lib/icons/hubspot.ico" alt="HubSpot" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">Products
+								</a>
+							</li>-->
+							<li>
+								<a href="/course-bookings" class="toggle-link">
+									<img src="/lib/icons/hubspot.ico" alt="ODI" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">Bookings
+								</a>
+							</li>
+							<li>
+								<a href="/moodle/courses" class="toggle-link">
+									<img src="/lib/icons/moodle.webp" alt="Moodle" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">Moodle Courses
+								</a>
+							</li>
+							<li>
+								<a href="/forecast/projects" class="toggle-link">
+									<img src="/lib/icons/forecast.png" alt="Forecast" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">Projects
+								</a>
+							</li>
+							<li>
+								<a href="/forecast/labels" class="toggle-link">
+									<img src="/lib/icons/forecast.png" alt="Forecast" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">Labels
+								</a>
+							</li>
 						</ul>
 					</li>
 					<li class="has-submenu">
 						<span class="toggle-link">Create</span>
 						<ul class="submenu">
-							<li><a href="/course-bookings/new" class="toggle-link">Course Booking</a></li>
-							<li><a href="/forecast/import" class="toggle-link">Tasks (Import)</a></li>
+							<li>
+								<a href="/hubspot/courses/new" class="toggle-link">
+									<img src="/lib/icons/hubspot.ico" alt="HubSpot" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">Course
+								</a>
+							</li>
+							<li>
+								<a href="/course-bookings/new" class="toggle-link">
+									<img src="/lib/icons/hubspot.ico" alt="ODI" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">Tutored Course Booking
+								</a>
+							</li>
+							<li>
+								<a href="/self-paced-bookings/new" class="toggle-link">
+									<img src="/lib/icons/hubspot.ico" alt="ODI" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">Self-Paced Course Booking
+								</a>
+							</li>
+							<li>
+								<a href="/forecast/import" class="toggle-link">
+									<img src="/lib/icons/forecast.png" alt="Forecast" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">Tasks (Import)
+								</a>
+							</li>
 						</ul>
 					</li>
 					<% if (user.authMethod === 'google') { %>

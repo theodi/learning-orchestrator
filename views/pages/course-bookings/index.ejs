@@ -8,6 +8,20 @@
           <span class="fa fa-plus"></span> New Course Booking
         </a>
       </div>
+
+      <!-- Pipeline Selection -->
+      <div class="row mb-3">
+        <div class="col-md-4">
+          <label for="pipelineSelect" class="form-label">Pipeline:</label>
+          <select id="pipelineSelect" class="form-control" onchange="changePipeline()">
+            <% pipelines.forEach(pipeline => { %>
+              <option value="<%= pipeline.id %>" <%= pipeline.id === currentPipeline ? 'selected' : '' %>>
+                <%= pipeline.label %>
+              </option>
+            <% }) %>
+          </select>
+        </div>
+      </div>
       <br/>
 
       <!-- Bookings Table -->
@@ -16,6 +30,9 @@
           <thead>
             <tr>
               <th>Deal Name</th>
+              <th>Course</th>
+              <th>Date</th>
+              <th>Amount</th>
               <th>Created</th>
               <th>HubSpot</th>
               <th>Forecast</th>
@@ -27,13 +44,16 @@
             <% bookings.forEach(booking => { %>
               <tr>
                 <td><%= booking.deal_name %></td>
-                <td><%= booking.created_at %></td>
+                <td><%= booking.course_name %></td>
+                <td data-order="<%= booking.course_date_sort %>"><%= booking.course_date %></td>
+                <td data-order="<%= booking.amount_sort %>"><%= booking.amount %></td>
+                <td data-order="<%= booking.created_at_sort %>"><%= booking.created_at %></td>
                 <td><%- booking.hubspot_link %></td>
                 <td><%- booking.forecast_link %></td>
                 <td><%- booking.calendar_link %></td>
                 <td>
                   <a href="/course-bookings/<%= booking.id %>" class="btn btn-sm btn-info">
-                    <span class="fa fa-eye"></span> More Details
+                    <span class="fa fa-eye"></span> Details
                   </a>
                 </td>
               </tr>
@@ -59,22 +79,63 @@
 $(document).ready(function() {
   // Initialize DataTable
   $('#bookingsTable').DataTable({
-    order: [[0, 'desc']], // Sort by ID descending (newest first)
+    order: [[4, 'desc']], // Sort by Date descending (newest first)
     pageLength: 25,
     responsive: true,
-         columnDefs: [
-       { targets: [1], width: '80px' }, // ID and Created columns
-       { targets: [0], width: '200px' }, // Deal Name column
-       { targets: [2, 3, 4], width: '120px' }, // Integration columns
-       { targets: [5], width: '120px' } // Actions column
-     ],
+    columnDefs: [
+      { targets: [0], width: '150px' }, // Deal Name
+      { targets: [1], width: '150px' }, // Course
+      { targets: [2], width: '90px', type: 'date' }, // Date
+      { targets: [3], width: '90px', type: 'num' },  // Amount
+      { targets: [4], width: '90px', type: 'date' }, // Created
+      { targets: [5, 6, 7], width: '100px' }, // Integration columns
+      { targets: [8], width: '160px' } // Actions column
+    ],
     language: {
       search: "Search bookings:",
       lengthMenu: "Show _MENU_ bookings per page",
       info: "Showing _START_ to _END_ of _TOTAL_ bookings"
     }
   });
+
+  // Style integration links as buttons with icons
+  function styleIntegrationLinks() {
+    $('#bookingsTable tbody tr').each(function() {
+      const cells = $(this).find('td');
+      const mappings = [
+        { index: 5, icon: '/lib/icons/hubspot.ico' },
+        { index: 6, icon: '/lib/icons/forecast.png' },
+        { index: 7, icon: '/lib/icons/calendar.svg' }
+      ];
+
+      mappings.forEach(m => {
+        const cell = $(cells[m.index]);
+        const link = cell.find('a');
+        if (link.length) {
+          // Apply button styles
+          link.addClass('btn btn-sm btn-outline-primary');
+          link.attr('target', '_blank');
+          // Set label and prepend icon if available
+          link.text('');
+          if (m.icon) {
+            link.prepend(`<img src="${m.icon}" alt="" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">`);
+          }
+        }
+      });
+    });
+  }
+
+  // Run once on load and on every draw (pagination/sorting/search)
+  styleIntegrationLinks();
+  $('#bookingsTable').on('draw.dt', styleIntegrationLinks);
 });
+
+function changePipeline() {
+  const pipelineId = document.getElementById('pipelineSelect').value;
+  if (pipelineId) {
+    window.location.href = `/course-bookings?pipeline=${encodeURIComponent(pipelineId)}`;
+  }
+}
 </script>
 
 <%- include('../../partials/footer') %>

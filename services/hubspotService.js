@@ -14,34 +14,215 @@ export class HubSpotService {
   }
 
   /**
-   * Fetch all HubSpot products
-   */
-  async fetchProducts() {
-    const baseUrl = `${this.baseUrl}/crm/v3/objects/products`;
+ * Fetch all HubSpot products
+ * @param {string|null} productType - Optional product type filter (e.g., "Learning Course")
+ */
+  // Convert HubSpot ISO8601 period (e.g., "P24M") to number of months
+  parseHubspotPeriod(period) {
+    if (!period) return null;
+    const str = String(period).trim();
+    const match = str.match(/^P(\d+)M$/i);
+    if (match) return parseInt(match[1], 10);
+    const asNumber = Number(str);
+    return Number.isFinite(asNumber) ? asNumber : null;
+  }
+
+  // Build HubSpot ISO8601 period string from number of months
+  buildHubspotPeriod(months) {
+    const n = parseInt(months, 10);
+    return Number.isFinite(n) && n > 0 ? `P${n}M` : '';
+  }
+
+  async fetchProducts(productType = null) {
     const allProducts = [];
     let after = null;
     let hasMore = true;
 
     try {
-      while (hasMore) {
-        const url = `${baseUrl}?limit=100${after ? `&after=${after}` : ""}`;
-        const response = await axios.get(url, { headers: this.headers });
+      if (productType) {
+        // Use POST /search with filter
+        const url = `${this.baseUrl}/crm/v3/objects/products/search`;
 
-        const results = response.data.results || [];
-        allProducts.push(
-          ...results.map((product) => ({
-            id: product.id,
-            name: product.properties.name,
-          }))
-        );
+        while (hasMore) {
+          const body = {
+            filterGroups: [
+              {
+                filters: [
+                  {
+                    propertyName: 'hs_product_type',
+                    operator: 'EQ',
+                    value: productType
+                  }
+                ]
+              }
+            ],
+            properties: ['name', 'hs_product_type', 'description', 'price', 'hs_sku', 'hs_recurring_billing_period', 'createdate', 'hs_lastmodifieddate', 'moodle_course_id', 'learning_price_members', 'price__gov_campus_', 'notes', 'learning_course_type'],
+            limit: 100,
+            ...(after && { after })
+          };
 
-        after = response.data.paging?.next?.after;
-        hasMore = !!after;
+          const response = await axios.post(url, body, { headers: this.headers });
+
+          const results = response.data.results || [];
+          allProducts.push(
+            ...results.map((product) => ({
+              id: product.id,
+              name: product.properties.name,
+              type: product.properties.hs_product_type || null,
+              description: product.properties.description || null,
+              price: product.properties.price || null,
+              sku: product.properties.hs_sku || null,
+              billing_period: this.parseHubspotPeriod(product.properties.hs_recurring_billing_period),
+              moodle_course_id: product.properties.moodle_course_id || null,
+              learning_price_members: product.properties.learning_price_members || null,
+              price_gov_campus: product.properties.price__gov_campus_ || null,
+              notes: product.properties.notes || '',
+              learning_course_type: product.properties.learning_course_type || '',
+              created: product.properties.createdate || null,
+              modified: product.properties.hs_lastmodifieddate || null
+            }))
+          );
+
+          after = response.data.paging?.next?.after;
+          hasMore = !!after;
+        }
+
+      } else {
+        // Use GET /objects/products with pagination and more properties
+        const url = `${this.baseUrl}/crm/v3/objects/products`;
+
+        while (hasMore) {
+          const response = await axios.get(
+            `${url}?limit=100&properties=name,hs_product_type,description,price,hs_sku,hs_recurring_billing_period,createdate,hs_lastmodifieddate,moodle_course_id,learning_price_members,price__gov_campus_,notes,learning_course_type${after ? `&after=${after}` : ''}`,
+            { headers: this.headers }
+          );
+
+          const results = response.data.results || [];
+          allProducts.push(
+            ...results.map((product) => ({
+              id: product.id,
+              name: product.properties.name,
+              type: product.properties.hs_product_type || null,
+              price: product.properties.price || null,
+              sku: product.properties.hs_sku || null,
+              billing_period: this.parseHubspotPeriod(product.properties.hs_recurring_billing_period),
+              moodle_course_id: product.properties.moodle_course_id || null,
+              learning_price_members: product.properties.learning_price_members || null,
+              price_gov_campus: product.properties.price__gov_campus_ || null,
+              notes: product.properties.notes || '',
+              learning_course_type: product.properties.learning_course_type || '',
+              created: product.properties.createdate || null,
+              modified: product.properties.hs_lastmodifieddate || null
+            }))
+          );
+
+          after = response.data.paging?.next?.after;
+          hasMore = !!after;
+        }
       }
 
       return allProducts;
     } catch (error) {
-      console.error("Error fetching HubSpot products:", error.response?.data || error.message);
+      console.error('Error fetching HubSpot products:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch HubSpot courses (products with type "Learning Course")
+   */
+  async fetchCourses() {
+    return this.fetchProducts('Learning Course');
+  }
+
+  /**
+   * Get a single product by ID
+   */
+  async getProduct(productId) {
+    try {
+      const url = `${this.baseUrl}/crm/v3/objects/products/${productId}`;
+      const response = await axios.get(
+        `${url}?properties=name,hs_product_type,description,price,hs_sku,hs_recurring_billing_period,moodle_course_id,learning_price_members,price__gov_campus_,notes,learning_course_type`,
+        { headers: this.headers }
+      );
+
+      const product = response.data;
+      return {
+        id: product.id,
+        name: product.properties.name,
+        type: product.properties.hs_product_type || null,
+        description: product.properties.description || null,
+        price: product.properties.price || null,
+        sku: product.properties.hs_sku || null,
+        billing_period: this.parseHubspotPeriod(product.properties.hs_recurring_billing_period),
+        moodle_course_id: product.properties.moodle_course_id || null,
+        learning_price_members: product.properties.learning_price_members || null,
+        price_gov_campus: product.properties.price__gov_campus_ || null,
+        notes: product.properties.notes || '',
+        learning_course_type: product.properties.learning_course_type || ''
+      };
+    } catch (error) {
+      console.error('Error fetching HubSpot product:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new HubSpot product
+   */
+  async createProduct(productData) {
+    try {
+      const url = `${this.baseUrl}/crm/v3/objects/products`;
+      const payload = {
+        properties: {
+          name: productData.name,
+          hs_product_type: productData.type || 'Learning Course',
+          description: productData.description || '',
+          price: productData.price || '',
+          hs_sku: productData.sku || '',
+          hs_recurring_billing_period: this.buildHubspotPeriod(productData.billing_period || productData.enrollment_duration_months),
+          moodle_course_id: productData.moodle_course_id || '',
+          learning_price_members: productData.learning_price_members || '',
+          price__gov_campus_: productData.price_gov_campus || '',
+          notes: productData.notes || '',
+          learning_course_type: productData.learning_course_type || ''
+        }
+      };
+
+      const response = await axios.post(url, payload, { headers: this.headers });
+      return response.data;
+    } catch (error) {
+      console.error('Error creating HubSpot product:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing HubSpot product
+   */
+  async updateProduct(productId, productData) {
+    try {
+      const url = `${this.baseUrl}/crm/v3/objects/products/${productId}`;
+      const payload = {
+        properties: {
+          name: productData.name,
+          hs_product_type: productData.type || 'Learning Course',
+          description: productData.description || '',
+          price: productData.price || '',
+          hs_sku: productData.sku || '',
+          hs_recurring_billing_period: this.buildHubspotPeriod(productData.billing_period || productData.enrollment_duration_months),
+          moodle_course_id: productData.moodle_course_id || '',
+          learning_price_members: productData.learning_price_members || '',
+          price__gov_campus_: productData.price_gov_campus || '',
+          notes: productData.notes || '',
+          learning_course_type: productData.learning_course_type || ''
+        }
+      };
+
+      const response = await axios.patch(url, payload, { headers: this.headers });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating HubSpot product:', error.response?.data || error.message);
       throw error;
     }
   }
@@ -290,6 +471,94 @@ export class HubSpotService {
   }
 
   /**
+   * Fetch line items associated with a deal, including their linked product and moodle_course_id
+   */
+  async fetchDealLineItemsWithProducts(dealId) {
+    try {
+      // Get associated line item IDs
+      const assocRes = await axios.get(
+        `${this.baseUrl}/crm/v3/objects/deals/${dealId}/associations/line_items`,
+        { headers: this.headers }
+      );
+      const lineItemIds = (assocRes.data?.results || []).map(r => r.id);
+      if (lineItemIds.length === 0) return [];
+
+      const results = [];
+      for (const liId of lineItemIds) {
+        // Fetch line item properties
+        const liRes = await axios.get(
+          `${this.baseUrl}/crm/v3/objects/line_items/${liId}?properties=name,hs_product_id,price,quantity,hs_recurring_billing_period`,
+          { headers: this.headers }
+        );
+        const li = liRes.data;
+        const productId = li?.properties?.hs_product_id || null;
+        // Parse term months from ISO8601 period P{n}M
+        let termMonths = null;
+        const period = li?.properties?.hs_recurring_billing_period || '';
+        const m = String(period).match(/^P(\d+)M$/i);
+        if (m) termMonths = parseInt(m[1], 10);
+        let product = null;
+        if (productId) {
+          product = await this.getProduct(productId);
+          // Fallback term from product if line item period missing
+          if ((termMonths === null || !Number.isFinite(termMonths)) && product?.billing_period) {
+            const bp = parseInt(product.billing_period, 10);
+            if (Number.isFinite(bp)) termMonths = bp;
+          }
+        }
+        results.push({
+          id: liId,
+          name: li?.properties?.name || null,
+          price: li?.properties?.price || null,
+          quantity: li?.properties?.quantity || null,
+          product_id: productId,
+          product: product,
+          moodle_course_id: product?.moodle_course_id || null,
+          term_months: termMonths
+        });
+      }
+      return results;
+    } catch (error) {
+      console.error('Error fetching deal line items:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch contacts associated to a deal with a specific association label (v4)
+   */
+  async fetchDealContactsByLabel(dealId, label) {
+    try {
+      const url = `${this.baseUrl}/crm/v4/objects/deals/${dealId}/associations/contacts`;
+      const res = await axios.get(url, { headers: this.headers });
+      const items = res.data?.results || [];
+      const contactIds = items
+        .filter(it => Array.isArray(it.associationTypes) && it.associationTypes.some(t => (t.label || '').toLowerCase() === String(label || '').toLowerCase()))
+        .map(it => it.toObjectId);
+      if (contactIds.length === 0) return [];
+
+      const contacts = [];
+      for (const id of contactIds) {
+        try {
+          const cRes = await axios.get(`${this.baseUrl}/crm/v3/objects/contacts/${id}?properties=firstname,lastname,email`, { headers: this.headers });
+          contacts.push({
+            id,
+            first_name: cRes.data?.properties?.firstname || '',
+            last_name: cRes.data?.properties?.lastname || '',
+            email: cRes.data?.properties?.email || ''
+          });
+        } catch (e) {
+          console.warn('Failed to fetch contact', id, e?.response?.status);
+        }
+      }
+      return contacts;
+    } catch (error) {
+      console.error('Error fetching deal contacts by label:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Create a HubSpot contact
    */
   async createContact({ firstName, lastName, email, phone }) {
@@ -319,6 +588,8 @@ export class HubSpotService {
   async createDeal(dealData) {
     const url = `${this.baseUrl}/crm/v3/objects/deals`;
 
+    const includesSelfPaced = String(dealData.courseType || '').toLowerCase().includes('self');
+    const includesTutorLed = String(dealData.courseType || '').toLowerCase().includes('tutor');
     const data = {
       properties: {
         dealname: dealData.dealName,
@@ -332,6 +603,9 @@ export class HubSpotService {
         course_name: dealData.courseName, // Custom property for course name
         course_date: dealData.startDate, // Custom property for course date
         hubspot_owner_id: dealData.ownerId, // Deal owner ID
+        // Flags for included course types (deals may include both)
+        includes_self_paced_courses: includesSelfPaced,
+        includes_tutor_led_courses: includesTutorLed,
       },
     };
 
@@ -357,6 +631,27 @@ export class HubSpotService {
       return response.data;
     } catch (error) {
       console.error("Error creating HubSpot deal:", JSON.stringify(error.response?.data || error.message, null, 2));
+      throw error;
+    }
+  }
+
+  /**
+   * Update a HubSpot deal with additional properties
+   */
+  async updateDeal(dealId, updateData) {
+    const url = `${this.baseUrl}/crm/v3/objects/deals/${dealId}`;
+
+    const data = {
+      properties: {
+        ...updateData
+      }
+    };
+
+    try {
+      const response = await axios.patch(url, data, { headers: this.headers });
+      return response.data;
+    } catch (error) {
+      console.error("Error updating HubSpot deal:", JSON.stringify(error.response?.data || error.message, null, 2));
       throw error;
     }
   }
@@ -388,6 +683,87 @@ export class HubSpotService {
       throw error;
     }
   }
+
+  /**
+ * Set association labels between two CRM objects (v4 API)
+ * - Ensures the association exists (creates with proper spec array)
+ * - If created with a USER_DEFINED type (which has a label), skips /labels
+ * - If created with HUBSPOT_DEFINED, uses /labels to apply labels
+ * - fromType/toType must be plural API names ("deals", "contacts", etc.)
+ */
+async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
+  const assocBase = `${this.baseUrl}/crm/v4/objects/${fromType}/${fromId}/associations/${toType}/${toId}`;
+  const labelsUrl = `${assocBase}/labels`;
+  const typesUrl  = `${this.baseUrl}/crm/v4/associations/${fromType}/${toType}/labels`;
+
+  // 0) Fetch available association defs (category, typeId, label)
+  let createSpec = null;
+  try {
+    const typesRes = await axios.get(typesUrl, { headers: this.headers });
+    const defs = (typesRes?.data?.results || []).map(d => ({
+      associationCategory: d.category,   // 'HUBSPOT_DEFINED' or 'USER_DEFINED'
+      associationTypeId: d.typeId,
+      label: d.label || null
+    }));
+
+    const desiredLabel = labels.length === 1 ? labels[0] : null;
+
+    // Prefer a user-defined type matching the desired label; else hubspot-defined; else first available
+    createSpec =
+      (desiredLabel && defs.find(d => d.label === desiredLabel)) ||
+      defs.find(d => d.associationCategory === 'HUBSPOT_DEFINED') ||
+      defs[0];
+
+    if (!createSpec?.associationTypeId) {
+      throw new Error('No valid association type found for this object pair.');
+    }
+  } catch (err) {
+    console.error('[HS] Failed to fetch/match association types', err?.response?.status, err?.response?.data || err.message);
+    throw new Error('Cannot determine associationTypeId for create call.');
+  }
+
+  // 1) Ensure the association exists (PUT with ARRAY body of specs)
+  let createdWithUserDefinedLabel = createSpec.associationCategory === 'USER_DEFINED' && !!createSpec.label;
+  try {
+    const res = await axios.put(assocBase, [createSpec], { headers: this.headers });
+
+    // If API echoes labels, trust that
+    if (Array.isArray(res.data?.labels) && res.data.labels.length > 0) {
+      createdWithUserDefinedLabel = true;
+    }
+  } catch (err) {
+    const code = err?.response?.status;
+    const data = err?.response?.data;
+    console.error('[HS] Association create failed', code, data);
+    if (code !== 409) {
+      throw new Error(`Failed to create association: ${code || err.message}`);
+    }
+  }
+
+  // 2) Only call /labels when needed:
+  // - If we created using HUBSPOT_DEFINED (no label), attach labels here
+  // - If we used USER_DEFINED (label already applied), skip to avoid 404
+  if (!createdWithUserDefinedLabel) {
+    try {
+      const res = await axios.put(labelsUrl, { labels }, { headers: this.headers });
+      return true;
+    } catch (err) {
+      const code = err?.response?.status;
+      const data = err?.response?.data;
+      console.error('[HS] Set labels failed', code, data, { url: labelsUrl, payload: { labels } });
+
+      if (code === 400 || code === 404) {
+        console.error(
+          '[HS] Hint: Ensure each label exists in HubSpot (Settings → Objects → Deals → Associations → Contacts → Manage labels),' +
+          ' check exact case/spelling, and confirm your Private App has crm.objects.associations.write.'
+        );
+      }
+      return false;
+    }
+  } else {
+    return true;
+  }
+}
 
   /**
    * Create line item for deal with product
@@ -425,6 +801,39 @@ export class HubSpotService {
   }
 
   /**
+   * Create line item for deal with custom name/price/quantity and optional productId
+   */
+  async createLineItemForDealWithOverrides(dealId, { productId = null, name, price, quantity = '1', termMonths = null }) {
+    try {
+      const lineItemData = {
+        properties: {
+          name: name || 'Line item',
+          price: price,
+          quantity: String(quantity)
+        }
+      };
+      if (productId) {
+        lineItemData.properties.hs_product_id = productId;
+      }
+      if (Number.isFinite(termMonths) && termMonths > 0) {
+        lineItemData.properties.hs_recurring_billing_period = `P${parseInt(termMonths, 10)}M`;
+      }
+
+      const lineItemUrl = `${this.baseUrl}/crm/v3/objects/line_items`;
+      const lineItemResponse = await axios.post(lineItemUrl, lineItemData, { headers: this.headers });
+      const lineItemId = lineItemResponse.data.id;
+
+      const associationUrl = `${this.baseUrl}/crm/v3/objects/deals/${dealId}/associations/line_items/${lineItemId}/deal_to_line_item`;
+      await axios.put(associationUrl, {}, { headers: this.headers });
+
+      return lineItemId;
+    } catch (error) {
+      console.error('Error creating line item with overrides:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Get a specific deal by ID
    */
   async getDeal(dealId) {
@@ -435,16 +844,26 @@ export class HubSpotService {
         {
           headers: this.headers,
           params: {
-            properties: [
-              'dealname',
-              'amount',
-              'closedate',
-              'pipeline',
-              'dealstage',
-              'hs_deal_stage_probability',
-              'hubspot_owner_id',
-              'description'
-            ].join(',')
+                         properties: [
+               'dealname',
+               'amount',
+               'closedate',
+               'pipeline',
+               'dealstage',
+               'hs_deal_stage_probability',
+               'hubspot_owner_id',
+               'description',
+               'startdate',
+               'course_name',
+               'course_date',
+               'course_type',
+               'calendar_event_id',
+               'calendar_event_url',
+               'forecast_id',
+               'projecturl',
+               'createdate',
+               'hs_lastmodifieddate'
+             ].join(',')
           }
         }
       );
@@ -543,12 +962,54 @@ export class HubSpotService {
         deal.properties.stage_details = null;
       }
   
-      return deal;
-    } catch (error) {
-      console.error('Error fetching deal:', error.response?.data || error.message);
-      throw error;
-    }
-  }
+             return deal;
+     } catch (error) {
+       console.error('Error fetching deal:', error.response?.data || error.message);
+       throw error;
+     }
+   }
+
+   /**
+    * Fetch deals from a specific pipeline
+    */
+   async fetchDealsFromPipeline(pipelineId, limit = 100) {
+     const url = `${this.baseUrl}/crm/v3/objects/deals/search`;
+     
+     const body = {
+       filterGroups: [
+         {
+           filters: [
+             {
+               propertyName: 'pipeline',
+               operator: 'EQ',
+               value: pipelineId
+             }
+           ]
+         }
+       ],
+       properties: [
+         'dealname', 'amount', 'pipeline', 'dealstage', 'description', 
+         'closedate', 'startdate', 'course_name', 'course_date', 'hubspot_owner_id',
+         'calendar_event_id', 'calendar_event_url', 'forecast_id', 'projecturl',
+         'createdate', 'hs_lastmodifieddate'
+       ],
+       limit: limit,
+       sorts: [
+         {
+           propertyName: 'createdate',
+           direction: 'DESCENDING'
+         }
+       ]
+     };
+
+     try {
+       const response = await axios.post(url, body, { headers: this.headers });
+       return response.data.results || [];
+     } catch (error) {
+       console.error("Error fetching deals from pipeline:", JSON.stringify(error.response?.data || error.message, null, 2));
+       throw error;
+     }
+   }
   
 
   /**
@@ -618,6 +1079,212 @@ export class HubSpotService {
   }
 
   /**
+   * Fetch email/notes history associated with a deal
+   * Returns unified array: { id, type: 'email'|'note', subject, to, from, text, html, timestamp }
+   */
+  async fetchDealEmailHistory(dealId) {
+    try {
+      const results = [];
+
+      // Notes associated to the deal
+      try {
+        const assocNotes = await axios.get(
+          `${this.baseUrl}/crm/v3/objects/deals/${dealId}/associations/notes`,
+          { headers: this.headers }
+        );
+        const noteIds = (assocNotes.data?.results || []).map(r => r.id);
+        for (const id of noteIds) {
+          try {
+            const nRes = await axios.get(
+              `${this.baseUrl}/crm/v3/objects/notes/${id}?properties=hs_note_body,hs_timestamp`,
+              { headers: this.headers }
+            );
+            const p = nRes.data?.properties || {};
+            results.push({
+              id,
+              type: 'note',
+              subject: '',
+              to: '',
+              from: '',
+              text: null,
+              html: p.hs_note_body || '',
+              status: '',
+              direction: '',
+              timestamp: p.hs_timestamp || null
+            });
+          } catch (e) {}
+        }
+      } catch (e) {}
+
+      // Sort newest first
+      results.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+      return results;
+    } catch (error) {
+      console.error('Error fetching email history:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Determine the appropriate email type to send based on previous emails sent to a contact
+   * @param {string} dealId - The deal ID
+   * @param {string} contactEmail - The contact email address
+   * @returns {Promise<'welcome'|'reminder'>} - The email type to send
+   */
+  async determineEmailType(dealId, contactEmail) {
+    try {
+      const history = await this.fetchLearnerEmailHistoryByDeal(dealId);
+      const contactHistory = history.find(h => h.email.toLowerCase() === contactEmail.toLowerCase());
+      
+      if (!contactHistory || !contactHistory.items || contactHistory.items.length === 0) {
+        // No previous emails sent - send welcome email
+        return 'welcome';
+      }
+      
+      // Helper: best-effort subject extraction from HTML body (first <strong> or 'Subject:' prefix)
+      const extractSubject = (it) => {
+        if (it?.subject) return String(it.subject);
+        const html = String(it?.html || '');
+        // Try first <strong> tag
+        const strongMatch = html.match(/<strong>([^<]+)<\/strong>/i);
+        if (strongMatch && strongMatch[1]) return strongMatch[1];
+        // Try 'Subject:' header in HTML/text
+        const subjMatch = html.match(/Subject:\s*([^<\n\r]+)/i);
+        if (subjMatch && subjMatch[1]) return subjMatch[1];
+        return '';
+      };
+
+      // Check if any previous email was a welcome email
+      const hasWelcomeEmail = contactHistory.items.some(item => {
+        const subj = extractSubject(item).toLowerCase();
+        return subj.includes('welcome') && !subj.includes('reminder');
+      });
+      
+      // If no welcome email was sent, send welcome; otherwise send reminder
+      return hasWelcomeEmail ? 'reminder' : 'welcome';
+    } catch (error) {
+      console.error('Error determining email type:', error);
+      // Default to welcome if we can't determine
+      return 'welcome';
+    }
+  }
+
+  /**
+   * Fetch learner-specific email/notes history grouped by contact email.
+   * Each item: { email, items: [{ id, type, subject, to, from, text, html, timestamp }] }
+   */
+  async fetchLearnerEmailHistoryByDeal(dealId) {
+    try {
+      const byEmail = new Map();
+
+      // Helper to push
+      const pushForEmails = (emailsArr, item) => {
+        emailsArr.forEach((em) => {
+          if (!em) return;
+          const key = String(em).toLowerCase();
+          if (!byEmail.has(key)) byEmail.set(key, { email: em, items: [] });
+          byEmail.get(key).items.push(item);
+        });
+      };
+
+      // Notes associated to deal → associated contacts define recipients; body contains subject/To rendered
+      try {
+        const assocNotes = await axios.get(
+          `${this.baseUrl}/crm/v3/objects/deals/${dealId}/associations/notes`,
+          { headers: this.headers }
+        );
+        const noteIds = (assocNotes.data?.results || []).map(r => r.id);
+        for (const id of noteIds) {
+          try {
+            const nRes = await axios.get(
+              `${this.baseUrl}/crm/v3/objects/notes/${id}?properties=hs_note_body,hs_timestamp`,
+              { headers: this.headers }
+            );
+            const p = nRes.data?.properties || {};
+            // Contacts associated to this note
+            let toEmails = [];
+            try {
+              const assocContacts = await axios.get(
+                `${this.baseUrl}/crm/v3/objects/notes/${id}/associations/contacts`,
+                { headers: this.headers }
+              );
+              const cids = (assocContacts.data?.results || []).map(r => r.id);
+              for (const cid of cids) {
+                try {
+                  const cRes = await axios.get(
+                    `${this.baseUrl}/crm/v3/objects/contacts/${cid}?properties=email`,
+                    { headers: this.headers }
+                  );
+                  const em = cRes.data?.properties?.email || null;
+                  if (em) toEmails.push(em);
+                } catch (_) {}
+              }
+            } catch (_) {}
+
+            const item = {
+              id,
+              type: 'note',
+              subject: '',
+              to: toEmails.join(', '),
+              from: process.env.EMAIL_FROM || '',
+              text: null,
+              html: p.hs_note_body || '',
+              timestamp: p.hs_timestamp || null
+            };
+            pushForEmails(toEmails, item);
+          } catch (_) {}
+        }
+      } catch (_) {}
+
+      // Build array and sort each by timestamp desc
+      const out = Array.from(byEmail.values()).map(group => ({
+        email: group.email,
+        items: (group.items || []).sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+      }));
+      return out;
+    } catch (error) {
+      console.error('Error fetching learner email history:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  // Log an email communication as a Note and associate with deal/contact.
+  async logEmailToDealAndContact({ dealId, contactId, subject, bodyHtml, sentAt = Date.now(), fromEmail = null, toEmail = null }) {
+    const timestampIso = new Date(sentAt).toISOString();
+    try {
+      const noteRes = await axios.post(
+        `${this.baseUrl}/crm/v3/objects/notes`,
+        {
+          properties: {
+            hs_note_body: `<div><p><strong>${subject || 'Training Email'}</strong></p><p><em>To:</em> ${toEmail || ''}${fromEmail ? ` &nbsp;&nbsp;<em>From:</em> ${fromEmail}` : ''}</p></div>${bodyHtml}`,
+            hs_timestamp: timestampIso
+          }
+        },
+        { headers: this.headers }
+      );
+      const noteId = noteRes?.data?.id;
+      if (noteId && dealId) {
+        await axios.put(
+          `${this.baseUrl}/crm/v3/objects/notes/${noteId}/associations/deals/${dealId}/note_to_deal`,
+          {},
+          { headers: this.headers }
+        );
+      }
+      if (noteId && contactId) {
+        await axios.put(
+          `${this.baseUrl}/crm/v3/objects/notes/${noteId}/associations/contacts/${contactId}/note_to_contact`,
+          {},
+          { headers: this.headers }
+        );
+      }
+      return { id: noteId, object: 'note' };
+    } catch (error) {
+      console.error('Error logging to HubSpot (note):', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Send data to Zapier webhook
    */
   async sendToZapier(payload) {
@@ -648,7 +1315,7 @@ export class HubSpotService {
    */
   handleWebhook(req) {
     const event = req.body;
-    console.log("Received HubSpot Webhook Event:", JSON.stringify(event, null, 2));
+    //console.log("Received HubSpot Webhook Event:", JSON.stringify(event, null, 2));
 
     return {
       objectType: event.objectType,
