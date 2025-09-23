@@ -162,6 +162,16 @@ export class HubSpotController extends BaseController {
       if (!deal_id) {
         return this.sendError(res, 'Missing deal_id', HTTP_STATUS.BAD_REQUEST);
       }
+      // Optional: single learner mode (HubSpot workflow per enrolled contact)
+      const contactEmail = (req.body?.contact_email || req.body?.email || req.query?.contact_email || req.query?.email || '').toString().trim();
+      if (contactEmail) {
+        try {
+          const result = await this.sendReminderForSingleLearner(deal_id, contactEmail);
+          return this.sendSuccess(res, result, 'Reminder processed for learner');
+        } catch (err) {
+          return this.sendError(res, err?.message || 'Failed to send learner reminder');
+        }
+      }
       // Queue: if a job exists and running, return 202; else enqueue
       const existing = this.getReminderJob(deal_id);
       if (existing && (existing.status === 'running' || existing.status === 'queued')) {
@@ -281,6 +291,81 @@ export class HubSpotController extends BaseController {
       skipped: results.filter(r => r.skipped).length
     };
     return { results, summary };
+  }
+  // Helper: send reminder/welcome for a single learner on a deal
+  async sendReminderForSingleLearner(deal_id, contact_email) {
+    const lineItems = await this.hubspotService.fetchDealLineItemsWithProducts(deal_id);
+    const courseEntries = lineItems
+      .map(li => ({
+        course_id: parseInt(li.moodle_course_id),
+        term_months: Number(li.term_months),
+        course_name: li?.product?.name || ''
+      }))
+      .filter(e => Number.isFinite(e.course_id));
+
+    const statuses = [];
+    for (const entry of courseEntries) {
+      const cid = entry.course_id;
+      const termMonths = Number.isFinite(entry.term_months) && entry.term_months > 0 ? entry.term_months : 12;
+      try {
+        const status = await this.enrollmentService.getUserCourseStatus(cid, contact_email, termMonths);
+        statuses.push({
+          course_id: cid,
+          course_name: status?.course_name || entry.course_name || '',
+          enrolled: Boolean(status?.enrolled),
+          accessed: Boolean(status?.accessed)
+        });
+      } catch (_) {
+        statuses.push({ course_id: cid, course_name: entry.course_name || '', enrolled: false, accessed: false });
+      }
+    }
+
+    const pendingCourses = statuses.filter(s => !(s.enrolled && s.accessed));
+    if (pendingCourses.length === 0) {
+      return { email: contact_email, skipped: true, reason: 'all courses completed' };
+    }
+
+    const determinedEmailType = await this.hubspotService.determineEmailType(deal_id, contact_email);
+    const moodleRoot = process.env.MOODLE_ROOT || 'https://moodle.learndata.info';
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3080';
+    const anyEnrolled = pendingCourses.some(c => c.enrolled);
+    const verifyUrl = `${baseUrl}/enrollments/verify?deal_id=${deal_id}&email=${encodeURIComponent(contact_email)}`;
+
+    let learnerName = 'Learner';
+    try {
+      const matches = await this.hubspotService.searchContactsByTerm(contact_email);
+      const first = matches?.[0]?.properties || {};
+      const firstName = first.firstname || first.firstName || '';
+      const lastName = first.lastname || first.lastName || '';
+      const full = `${firstName} ${lastName}`.trim();
+      learnerName = full || first.name || first.fullname || learnerName;
+    } catch (_) {}
+
+    const template = determinedEmailType === 'welcome'
+      ? buildWelcomeEmail({ moodleRootUrl: moodleRoot, courses: pendingCourses, verifyUrl, anyEnrolled, learnerName })
+      : buildReminderEmail({ moodleRootUrl: moodleRoot, courses: pendingCourses, verifyUrl, anyEnrolled, learnerName });
+    const html = this.emailService.buildHtml({ title: template.subject, bodyHtml: template.bodyHtml });
+
+    const info = await this.emailService.sendHtmlEmail({ to: contact_email, subject: template.subject, html });
+
+    let contactId = null;
+    try {
+      const matches = await this.hubspotService.searchContactsByTerm(contact_email);
+      contactId = matches?.[0]?.id || null;
+    } catch (_) {}
+    try {
+      await this.hubspotService.logEmailToDealAndContact({
+        dealId: String(deal_id),
+        contactId,
+        subject: `Email sent: ${template.subject}`,
+        bodyHtml: html,
+        fromEmail: process.env.EMAIL_FROM || 'training@theodi.org',
+        toEmail: contact_email,
+        sentAt: Date.now()
+      });
+    } catch (_) {}
+
+    return { email: contact_email, sent: true, emailType: determinedEmailType, messageId: info?.messageId || null };
   }
   // Send learner reminder email and log to HubSpot
   async sendLearnerReminder(req, res) {
