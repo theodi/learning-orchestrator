@@ -45,6 +45,15 @@ export function buildWelcomeEmail({ moodleRootUrl, courses, verifyUrl, anyEnroll
             <a href="https://theodi.org/account/register/" target="_blank" class="btn">Create ODI Account</a>
           </li>
           <li>
+                <strong>Login to Moodle</strong> using your ODI account
+                <br>  
+                <a href="${moodleRootUrl}/login/index.php" target="_blank" class="btn">
+                  Go to Moodle
+                </a>
+                <br>
+                <small class="text-muted">Use the "Sign in with ODI Account" option.</small>
+              </li>
+          <li>
             <strong>Complete your enrollment</strong> by visiting the verification page
             <br>
             <a href="${verifyUrl}" target="_blank" class="btn">Complete Enrollment</a>
@@ -90,6 +99,15 @@ export function buildReminderEmail({ moodleRootUrl, courses, verifyUrl, anyEnrol
             <strong>Create an ODI Account</strong> (if you haven't already)
             <br>
             <a href="https://theodi.org/account/register/" target="_blank" class="btn">Create ODI Account</a>
+          </li>
+          <li>
+            <strong>Login to Moodle</strong> using your ODI account
+            <br>  
+            <a href="${moodleRootUrl}/login/index.php" target="_blank" class="btn">
+              Go to Moodle
+            </a>
+            <br>
+            <small class="text-muted">Use the "Sign in with ODI Account" option.</small>
           </li>
           <li>
             <strong>Complete your enrollment</strong> by visiting the verification page
