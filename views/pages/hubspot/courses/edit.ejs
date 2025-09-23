@@ -39,6 +39,7 @@
           </div>
           <div class="panel-body">
             <form method="POST" action="<%= course.id ? `/hubspot/courses/${course.id}/edit` : '/hubspot/courses' %>" class="form-horizontal">
+              <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
               
               <div class="form-group">
                 <label for="name" class="col-sm-3 control-label">Course Name *</label>

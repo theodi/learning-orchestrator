@@ -256,10 +256,13 @@
       return { success: true, data: responseData };
       */
       try {
+        const tokenMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = tokenMeta ? tokenMeta.getAttribute('content') : '';
         const response = await fetch('/forecast/tasks', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken,
           },
           body: JSON.stringify(object),
         });

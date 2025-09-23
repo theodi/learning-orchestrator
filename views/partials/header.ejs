@@ -11,6 +11,10 @@
 <meta http-equiv="Expires" content="0">
 <title><%= page.title %></title>
 
+<% if (typeof csrfToken !== 'undefined' && csrfToken) { %>
+<meta name="csrf-token" content="<%= csrfToken %>">
+<% } %>
+
 <script type="text/javascript" src="/lib/jquery-3.7.1.min.js"></script>
 
 <link href="/css/water.css" rel="stylesheet">
