@@ -1,7 +1,7 @@
 {
-  "name": "odi-forecast-helper",
-  "version": "2.0.0",
-  "description": "A system to help automate ODI systems, e.g. hubspot and forecast, mainly used by ODI Learning",
+  "name": "learning-orchestrator",
+  "version": "2.1.0",
+  "description": "ODI Learning Orchestrator: connects HubSpot, Forecast, Moodle, and Google Calendar for bookings, enrollments, and scheduling.",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -18,14 +18,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/theodi/nodejs-oauth-template.git"
+    "url": "git+ssh://git@github.com/theodi/learning-orchestrator.git"
   },
   "author": "David Tarrant",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/theodi/nodejs-oauth-template/issues"
+    "url": "https://github.com/theodi/learning-orchestrator/issues"
   },
-  "homepage": "https://github.com/theodi/nodejs-oauth-template/#readme",
+  "homepage": "https://github.com/theodi/learning-orchestrator#readme",
   "dependencies": {
     "ajv": "^8.6.1",
     "axios": "^1.8.4",
