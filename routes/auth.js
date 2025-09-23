@@ -6,9 +6,9 @@ import AuthController from '../controllers/AuthController.js';
 const router = express.Router();
 const authController = new AuthController();
 
-// Authentication route for Google
+// Authentication route for Google (enable state to mitigate CSRF)
 router.get('/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
+  passport.authenticate('google', { scope: ['profile', 'email'], state: true })
 );
 
 // Authentication route for Django

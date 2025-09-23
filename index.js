@@ -8,9 +8,12 @@ dotenv.config({ path: "./.env" });
 import axios from 'axios';
 import express from 'express';
 import session from 'express-session';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import passport from './passport.js'; // Import the passport module
 import authRoutes from './routes/auth.js'; // Import the authentication routes module
 import methodOverride from 'method-override';
+import csurf from 'csurf';
 
 import { ensureAuthenticated } from './middleware/auth.js';
 import { connectDB } from './config/database.js';
@@ -80,52 +83,71 @@ app.use((req, res, next) => {
 });
 
 // Security headers and middleware
-app.use((req, res, next) => {
-  // Security headers
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  
-  // Remove server information
-  res.removeHeader('X-Powered-By');
-  
-  next();
-});
+app.disable('x-powered-by');
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      "default-src": ["'self'"],
+      "script-src": ["'self'", "'unsafe-inline'"],
+      "style-src": ["'self'", "'unsafe-inline'"],
+      "img-src": ["'self'", 'data:'],
+      "object-src": ["'none'"],
+      "base-uri": ["'self'"],
+      "frame-ancestors": ["'none'"]
+    }
+  },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  hsts: process.env.NODE_ENV === 'production' ? {
+    maxAge: 60 * 60 * 24 * 365,
+    includeSubDomains: true,
+    preload: true
+  } : false
+}));
 
 /* Setup public directory
  * Everything in her does not require authentication */
 
 app.use(express.static(__dirname + '/public'));
 
+// Rate limiting
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+const publicLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Apply rate limiting BEFORE mounting routers
+app.use('/auth', authLimiter);
+
 // Use authentication routes
 app.use('/auth', authRoutes);
 
-// Basic rate limiting for authentication endpoints
-app.use('/auth', (req, res, next) => {
-  const clientIP = req.ip || req.connection.remoteAddress;
-  const now = Date.now();
-  
-  // Simple in-memory rate limiting (for development)
-  if (!req.app.locals.rateLimit) {
-    req.app.locals.rateLimit = new Map();
-  }
-  
-  const clientData = req.app.locals.rateLimit.get(clientIP) || { count: 0, resetTime: now + 15 * 60 * 1000 };
-  
-  if (now > clientData.resetTime) {
-    clientData.count = 1;
-    clientData.resetTime = now + 15 * 60 * 1000;
-  } else {
-    clientData.count++;
-  }
-  
-  req.app.locals.rateLimit.set(clientIP, clientData);
-  
-  if (clientData.count > 100) { // 100 requests per 15 minutes
-    return res.status(429).json({ error: 'Too many requests' });
-  }
-  
+// CSRF protection for state-changing requests (skip public and OAuth paths)
+const csrfProtection = csurf();
+app.use((req, res, next) => {
+  const methodSafe = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
+  const skip = req.path.startsWith('/auth/')
+    || req.path.startsWith('/webhooks')
+    || req.path.startsWith('/enrollments/verify')
+    || req.path.startsWith('/enrollments/status');
+  if (methodSafe || skip) return next();
+  return csrfProtection(req, res, next);
+});
+// Expose CSRF token to views when available
+app.use((req, res, next) => {
+  try {
+    if (req.csrfToken) {
+      res.locals.csrfToken = req.csrfToken();
+    }
+  } catch (_) {}
   next();
 });
 
@@ -184,12 +206,12 @@ app.use("/moodle", ensureAuthenticated, moodleRoutes);
 
 // Public enrollment verification routes (no authentication required)
 import enrollmentVerificationRoutes from "./routes/enrollmentVerification.js";
-app.use("/enrollments/verify", enrollmentVerificationRoutes);
+app.use("/enrollments/verify", publicLimiter, enrollmentVerificationRoutes);
 
 // Public status check: ?course_id=123&email=user@example.com
 import EnrollmentController from "./controllers/EnrollmentController.js";
 const publicEnrollmentController = new EnrollmentController();
-app.get('/enrollments/status', (req, res) => publicEnrollmentController.getUserCourseStatus(req, res));
+app.get('/enrollments/status', publicLimiter, (req, res) => publicEnrollmentController.getUserCourseStatus(req, res));
 
 import enrollmentRoutes from "./routes/enrollments.js";
 app.use("/enrollments", ensureAuthenticated, enrollmentRoutes);
@@ -199,7 +221,7 @@ app.use("/self-paced-bookings", ensureAuthenticated, selfPacedBookingsRoutes);
 
 // Webhooks (public, authenticated by API key inside controller)
 import webhooksRoutes from "./routes/webhooks.js";
-app.use("/webhooks", webhooksRoutes);
+app.use("/webhooks", publicLimiter, webhooksRoutes);
 
 //Keep this at the END!
 app.get('*', function(req, res){
