@@ -38,7 +38,7 @@
                       <tr><td><strong>Value:</strong></td><td><span id="dealValue">-</span></td></tr>
                       <tr><td><strong>Pipeline:</strong></td><td><span id="dealPipeline">-</span></td></tr>
                       <tr><td><strong>Stage:</strong></td><td><span id="dealStage">-</span></td></tr>
-                      <tr><td><strong>Course Type:</strong></td><td><span id="courseType">-</span></td></tr>
+                      
                     </tbody>
                   </table>
                   <div class="text-center">
@@ -121,7 +121,7 @@
     </div>
   </div>
 
-  <% /* Self-paced learner status section (hidden by default, shown when course_type is Self-paced) */ %>
+  <% /* Self-paced learner status section (hidden by default, shown when HubSpot includes_self_paced_courses is true) */ %>
 <div id="selfPacedSection" style="display:none" class="container mb-5">
   <div class="card mt-4">
     <div class="card-header bg-warning text-dark">
@@ -209,8 +209,13 @@ $(document).ready(function() {
               ? `${deal.properties.owner_details.firstName} ${deal.properties.owner_details.lastName}`
               : 'N/A'
           );
-          $('#courseType').text(deal.properties?.course_type || 'N/A');
-          if ((deal.properties?.course_type || '').toLowerCase() === 'self-paced') {
+          
+          const includesSelfPacedRaw = deal.properties?.includes_self_paced_courses;
+          const includesSelfPaced = (
+            includesSelfPacedRaw === true ||
+            (typeof includesSelfPacedRaw === 'string' && ['true','yes','1','y'].includes(includesSelfPacedRaw.toLowerCase()))
+          );
+          if (includesSelfPaced) {
             $('#selfPacedSection').show();
             loadLearnerMatrix(dealId);
           }

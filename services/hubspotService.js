@@ -857,6 +857,8 @@ async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
                'course_name',
                'course_date',
                'course_type',
+               'includes_self_paced_courses',
+               'includes_tutor_led_courses',
                'calendar_event_id',
                'calendar_event_url',
                'forecast_id',
