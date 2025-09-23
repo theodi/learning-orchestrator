@@ -4,9 +4,9 @@
   <div class="container">
     <div class="jumbotron">
       <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="text-primary text-center"><span class="fa fa-calendar"></span> New Course Booking</h1>
+        <h1 class="text-primary text-center"><span class="fa fa-calendar"></span> New Tutored Course Booking</h1>
         <a href="/course-bookings" class="btn btn-secondary">
-          <span class="fa fa-arrow-left"></span> Back to Bookings
+          <span class="fa fa-arrow-left"></span> Back to Tutored Course Bookings
         </a>
       </div>
       <br/>
@@ -49,9 +49,9 @@
             <label class="" style="min-width: 200px;">Course Name:</label>
             <select name="course_id" id="courseNameSelect" class="" required>
               <option value="">-- Select --</option>
-              <% products.forEach(product => { %>
+              <% products.forEach(product => { if (product && product.learning_course_type === 'Tutor led') { %>
                 <option value="<%= product.id %>" data-name="<%= product.name %>"><%= product.name %></option>
-              <% }) %>
+              <% } }) %>
             </select>
             <input type="hidden" name="course_name" id="courseNameDisplay" value="">
             <br/>
@@ -121,6 +121,13 @@
             <div class="">
                 <label class="" style="min-width: 200px;">Value(£):</label>
                 <input type="number" name="value" class="" required>
+              </div>
+
+              <!-- Selected Course Pricing Guidance -->
+              <div id="coursePricingInfo" class="alert alert-info" style="display:none; margin-top:10px; max-width: 640px;">
+                <strong>Pricing guidance</strong>
+                <div id="coursePricingBody" style="margin-top:6px;"></div>
+                <small class="text-muted" style="display:block; margin-top:8px;">These values are for guidance only. Always confirm the actual sale price.</small>
               </div>
             
           <br/>
@@ -219,7 +226,17 @@
       on(courseSelect, 'change', (e) => {
         const opt = e.currentTarget.options[e.currentTarget.selectedIndex];
         setVal('courseNameDisplay', opt?.getAttribute('data-name') || "");
+        const selectedId = e.currentTarget.value;
+        if (selectedId) {
+          fetchAndRenderCoursePricing(selectedId);
+        } else {
+          hideCoursePricing();
+        }
       });
+      // Render pricing if a course is pre-selected
+      if (courseSelect && courseSelect.value) {
+        fetchAndRenderCoursePricing(courseSelect.value);
+      }
     };
   
     // 3) Sub-client → client name (simple mirror)
@@ -356,6 +373,53 @@
       `;
       document.body.appendChild(div);
       setTimeout(() => div.parentNode && div.remove(), 5000);
+    };
+
+    // Pricing guidance helpers
+    const priceToText = (v) => {
+      const num = parseFloat(v);
+      if (Number.isFinite(num)) return `£${num.toFixed(2)}`;
+      return '—';
+    };
+
+    const hideCoursePricing = () => {
+      const box = document.getElementById('coursePricingInfo');
+      if (box) box.style.display = 'none';
+      const body = document.getElementById('coursePricingBody');
+      if (body) body.innerHTML = '';
+    };
+
+    const renderCoursePricing = (course) => {
+      const box = document.getElementById('coursePricingInfo');
+      const body = document.getElementById('coursePricingBody');
+      if (!box || !body) return;
+      const title = course?.name;
+      const base = priceToText(course?.price);
+      const members = priceToText(course?.learning_price_members);
+      const gov = priceToText(course?.price_gov_campus);
+      const notes = (course?.notes || '').toString().trim();
+
+      body.innerHTML = `
+        <div><strong>${title}</strong></div>
+        <div><strong>Base price:</strong> ${base}</div>
+        <div><strong>Members price:</strong> ${members}</div>
+        <div><strong>Gov Campus price:</strong> ${gov}</div>
+        ${notes ? `<div style="margin-top:6px;"><strong>Notes:</strong><br><pre style="white-space:pre-wrap; background:transparent; border:0; padding:0; margin:0;">${notes}</pre></div>` : ''}
+      `;
+      box.style.display = 'block';
+    };
+
+    const fetchAndRenderCoursePricing = async (courseId) => {
+      try {
+        const res = await fetch(`/hubspot/courses/${encodeURIComponent(courseId)}`, { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) throw new Error('Failed to fetch course');
+        const json = await res.json();
+        const course = json?.data || json || {};
+        renderCoursePricing(course);
+      } catch (err) {
+        console.error('Could not load course pricing:', err);
+        hideCoursePricing();
+      }
     };
   
     /* ---------- Public API ---------- */
@@ -531,24 +595,22 @@
       }
     };
 
-    // Step 5: Save to local database with integration results
-    const saveToLocalDatabase = async (payload, integrationResults) => {
+    // Step 5: Update HubSpot deal with integration results
+    const updateHubSpotDeal = async (dealId, integrationResults) => {
       try {
-        const bookingData = {
-          ...payload,
-          hubspot_deal_id: integrationResults.deal?.dealId || null,
-          hubspot_deal_url: integrationResults.deal?.dealUrl || null,
+        const updateData = {
+          hubspot_deal_id: dealId,
           forecast_project_id: integrationResults.forecast?.project?.id || null,
           forecast_project_url: integrationResults.forecast?.project_view_id ? `https://app.forecast.it/project/${integrationResults.forecast.project_view_id}` : null,
           google_calendar_event_id: integrationResults.calendar?.eventId || null,
           google_calendar_url: integrationResults.calendar?.eventUrl || null
         };
 
-        const data = await apiCall('/course-bookings', bookingData);
+        const data = await apiCall('/course-bookings', updateData);
         return data;
       } catch (error) {
-        console.error('Failed to save to local database:', error);
-        // Don't throw here - we want to continue even if local save fails
+        console.error('Failed to update HubSpot deal:', error);
+        // Don't throw here - we want to continue even if update fails
         return null;
       }
     };
@@ -576,14 +638,14 @@
         const forecastResult = await createForecastProject(payload, dealResult.dealUrl);
         const calendarResult = await createCalendarEvent(payload, forecastResult);
         
-        // Save all results to local database
+        // Update HubSpot deal with integration results
         const integrationResults = {
           deal: dealResult,
           forecast: forecastResult,
           calendar: calendarResult
         };
         
-        await saveToLocalDatabase(payload, integrationResults);
+        await updateHubSpotDeal(dealResult.dealId, integrationResults);
         
         // All steps completed successfully
         

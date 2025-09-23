@@ -1,0 +1,63 @@
+<%- include('../../partials/header') %>
+
+<section class="content-block light-grey">
+  <h1>Moodle Courses</h1>
+  <p>This table loads live from Moodle via AJAX.</p>
+
+  <table id="coursesTable" class="display" style="width:100%">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Full name</th>
+        <th>Short name</th>
+        <th>Category</th>
+        <th>Start date</th>
+        <th>End date</th>
+        <th>Visible</th>
+        <th>Enrollments</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<script src="/lib/DataTables/datatables.min.js"></script>
+<script>
+  $(document).ready(function () {
+    const table = $('#coursesTable').DataTable({
+      ajax: {
+        url: '/moodle/courses',
+        headers: { 'Accept': 'application/json' },
+        dataSrc: function (json) {
+          if (json && json.success && Array.isArray(json.data)) {
+            return json.data;
+          }
+          return [];
+        }
+      },
+      columns: [
+        { data: 'id' },
+        { data: 'fullname' },
+        { data: 'shortname' },
+        { data: 'categoryname', defaultContent: '' },
+        { data: 'startdate', render: d => d ? new Date(d * 1000).toLocaleDateString('en-GB') : '' },
+        { data: 'enddate', render: d => d ? new Date(d * 1000).toLocaleDateString('en-GB') : '' },
+        { data: 'visible', render: v => v ? 'Yes' : 'No' },
+        {
+          data: 'id',
+          render: function(data, type, row) {
+            if (type === 'display') {
+              return `<a href="/enrollments/course/${data}" class="btn btn-primary btn-sm">View Enrollments</a>`;
+            }
+            return data;
+          }
+        }
+      ],
+      order: [[0, 'asc']]
+    });
+  });
+  </script>
+
+<%- include('../../partials/footer') %>
+
+

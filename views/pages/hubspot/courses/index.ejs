@@ -1,0 +1,160 @@
+<%- include('../../../partials/header') %>
+ 
+ <section class="content-block light-grey">
+   <div class="container">
+     <style>
+       /* Wrap table headers and tighten general spacing */
+       #coursesTable thead th {
+         white-space: normal;
+         word-break: break-word;
+         vertical-align: bottom;
+       }
+       /* Make Name wider */
+       #coursesTable th:nth-child(1),
+       #coursesTable td:nth-child(1) { width: 35%; }
+       /* Make Course Type compact like others */
+       #coursesTable th:nth-child(2),
+       #coursesTable td:nth-child(2) { width: 8%; }
+       /* Make Actions wider */
+       #coursesTable th:nth-child(8),
+       #coursesTable td:nth-child(8) { width: 18%; }
+       /* Keep other columns compact */
+       #coursesTable th:nth-child(3),
+       #coursesTable td:nth-child(3),
+       #coursesTable th:nth-child(4),
+       #coursesTable td:nth-child(4),
+       #coursesTable th:nth-child(5),
+       #coursesTable td:nth-child(5),
+       #coursesTable th:nth-child(6),
+       #coursesTable td:nth-child(6),
+       #coursesTable th:nth-child(7),
+       #coursesTable td:nth-child(7) { width: 7%; }
+     </style>
+      <div class="row">
+        <div class="col-md-8">
+          <h1>
+            <img src="/lib/icons/hubspot.ico" alt="HubSpot" style="height:24px;width:24px;vertical-align:middle;margin-right:8px;">
+            HubSpot Courses
+          </h1>
+        </div>
+        <div class="col-md-4 text-right">
+          <a href="/hubspot/courses/new" class="btn btn-primary">
+            Create New Course
+          </a>
+        </div>
+      </div>
+      
+      <div class="row">
+        <div class="col-md-12">
+          <div class="panel panel-default">
+            <div class="panel-body">
+              <table id="coursesTable" class="table table-striped table-bordered" style="width:100%">
+                <thead>
+                                   <tr>
+                   <th>Name</th>
+                   <th>Course Type</th>
+                   <th>Price</th>
+                   <th>Members Price</th>
+                   <th>Gov Campus Price</th>
+                   <th>Moodle ID</th>
+                   <th>Enrollment Duration</th>
+                   <th>Actions</th>
+                 </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <script>
+    $(document).ready(function () {
+      const table = $('#coursesTable').DataTable({
+        ajax: {
+          url: '/hubspot/courses',
+          dataSrc: function(json) {
+            return json.data || json || [];
+          }
+        },
+        columns: [
+          { 
+            data: 'name',
+            render: function(data, type, row) {
+              if (type === 'display') {
+                return `<a href="/hubspot/courses/${row.id}">${data}</a>`;
+              }
+              return data;
+            }
+          },
+          { 
+            data: 'learning_course_type',
+            render: function(data) {
+              if (!data) return '';
+              // Format the course type for better display
+              return data.charAt(0).toUpperCase() + data.slice(1).toLowerCase();
+            }
+          },
+                   { 
+             data: 'price',
+             render: function(data) {
+               return data ? `£${parseFloat(data).toFixed(2)}` : '';
+             }
+           },
+           { 
+             data: 'learning_price_members',
+             render: function(data) {
+               return data ? `£${parseFloat(data).toFixed(2)}` : '';
+             }
+           },
+           { 
+             data: 'price_gov_campus',
+             render: function(data) {
+               return data ? `£${parseFloat(data).toFixed(2)}` : '';
+             }
+           },
+           { data: 'moodle_course_id' },
+          { 
+            data: 'billing_period',
+            render: function(data) {
+              return data ? `${data} months` : '';
+            }
+          },
+          { 
+            data: 'id',
+            render: function(data, type, row) {
+              if (type === 'display') {
+                return `
+                  <div class="btn-group btn-group-sm">
+                    <a href="/hubspot/courses/${data}" class="btn btn-info btn-sm" title="View">
+                     View
+                    </a>
+                    <a href="/hubspot/courses/${data}/edit" class="btn btn-warning btn-sm" title="Edit">
+                      Edit
+                    </a>
+                  </div>
+                `;
+              }
+              return data;
+            }
+          }
+        ],
+        columnDefs: [
+          { targets: 0, width: '35%' }, // Name
+          { targets: 1, width: '8%' }, // Course Type
+          { targets: 7, width: '18%' }, // Actions
+          { targets: [2,3,4,5,6], width: '7%' }, // Compact others
+          { targets: '_all', className: 'text-wrap' }
+        ],
+        pageLength: 25,
+        order: [[0, 'asc']],
+        responsive: true,
+        dom: '<"top"lf>rt<"bottom"ip><"clear">'
+      });
+    });
+  </script>
+  
+  <%- include('../../../partials/footer') %>
+  
