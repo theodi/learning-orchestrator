@@ -65,8 +65,9 @@
         <table class="table" id="coursesTable" style="max-width:960px;">
           <thead>
             <tr>
-              <th style="width:60%">Course</th>
-              <th style="width:20%">Total Price (£)</th>
+              <th style="width:50%">Course</th>
+              <th style="width:15%">Term (months)</th>
+              <th style="width:15%">Total Price (£)</th>
               <th style="width:20%"></th>
             </tr>
           </thead>
@@ -124,21 +125,34 @@
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
-        <select name="product_id" class="form-control" style="width:100%">
+        <select name="product_id" class="form-control courseSelectPlain" style="width:100%">
           <option value="">-- Select --</option>
           <% (courses || []).forEach(function(c){ %>
-            <option value="<%= c.id %>"><%= c.name %></option>
+            <option value="<%= c.id %>" data-term="<%= c.billing_period || '' %>"><%= c.name %></option>
           <% }); %>
         </select>
+      </td>
+      <td>
+        <input type="number" name="term_months" class="form-control" value="${data.term_months||''}" min="0" step="1" placeholder="e.g. 12">
       </td>
       <td>
         <input type="number" name="price" class="form-control" value="${data.price||''}" min="0" step="0.01" required>
       </td>
       <td>
-        <button type="button" class="btn btn-link text-danger removeRow">Remove</button>
+        <button type="button" class="btn btn-link removeRow">Remove</button>
       </td>`;
     qs('#coursesTable tbody').appendChild(tr);
-    initCourseSelect(qs('select.courseSelect', tr));
+    initCourseSelect(qs('select.courseSelectPlain', tr));
+    // Prefill term based on selected course default
+    const selectEl = qs('select[name="product_id"]', tr);
+    const termEl = qs('input[name="term_months"]', tr);
+    const applyDefaultTerm = ()=>{
+      const opt = selectEl.options[selectEl.selectedIndex];
+      const def = opt ? (opt.getAttribute('data-term') || '') : '';
+      if (def && !termEl.value) termEl.value = def;
+    };
+    selectEl.addEventListener('change', applyDefaultTerm);
+    applyDefaultTerm();
     qs('input[name="price"]', tr).addEventListener('blur', (e)=>{ const v = parseFloat(e.target.value); if(!isNaN(v)) e.target.value = v.toFixed(2); recalcTotal(); });
     qs('.removeRow', tr).addEventListener('click', ()=>{ tr.remove(); recalcTotal(); });
   }
@@ -148,7 +162,7 @@
     tr.innerHTML = `
       <td><input type="text" name="learner_name" class="form-control" value="${data.name||''}" placeholder="Full name"></td>
       <td><input type="email" name="learner_email" class="form-control" value="${data.email||''}" placeholder="name@example.com"></td>
-      <td><button type="button" class="btn btn-link text-danger removeRow">Remove</button></td>`;
+      <td><button type="button" class="btn btn-link removeRow">Remove</button></td>`;
     qs('#learnersTable tbody').appendChild(tr);
     qs('.removeRow', tr).addEventListener('click', ()=> tr.remove());
   }
@@ -247,7 +261,8 @@
         product_id: qs('select[name=\"product_id\"]', tr)?.value || '',
         name: qs('select[name=\"product_id\"] option:checked', tr)?.textContent || 'Self-Paced Course',
         quantity: '1',
-        price: qs('input[name=\"price\"]', tr)?.value || '0'
+        price: qs('input[name=\"price\"]', tr)?.value || '0',
+        term_months: qs('input[name=\"term_months\"]', tr)?.value || ''
       })).filter(i => i.product_id || Number(i.price) > 0);
 
       const learners = qsa('#learnersTable tbody tr').map(tr => ({

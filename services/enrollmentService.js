@@ -13,7 +13,7 @@ export class EnrollmentService {
   }
 
   // Check enrollment/access status for a user in a course
-  async getUserCourseStatus(courseId, email) {
+  async getUserCourseStatus(courseId, email, durationMonths = 12) {
     try {
       const normalizedEmail = (email || '').toLowerCase().trim();
       if (!courseId || !normalizedEmail) {
@@ -73,8 +73,8 @@ export class EnrollmentService {
         try {
           const lookedUp = await this.moodleService.lookupUserByEmail(normalizedEmail);
           if (lookedUp && lookedUp.id) {
-            // Use default duration from config or 12 months
-            const enrolResult = await this.moodleService.enrolUserInCourse(lookedUp.id, parseInt(courseId, 10), 12);
+            // Enrol using provided duration (months)
+            const enrolResult = await this.moodleService.enrolUserInCourse(lookedUp.id, parseInt(courseId, 10), parseInt(durationMonths, 10));
             if (enrolResult && enrolResult.success) {
               // Confirm enrolment and access
               const details = await this.moodleService.getUserEnrollmentDetails(lookedUp.id, parseInt(courseId, 10));

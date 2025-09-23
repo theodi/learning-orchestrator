@@ -920,10 +920,10 @@ table tr {
   color: var(--color-dark-grey);
 }
 
-.dt-length {
+.dt-length, .dt-info {
   float: left;
 }
-.dt-search {
+.dt-search, .dt-pagings {
   float: right;
 }
 .dt-length select, .dt-length label, .dt-search input, .dt-search label {

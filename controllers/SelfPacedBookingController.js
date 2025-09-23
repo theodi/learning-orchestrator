@@ -147,11 +147,13 @@ export default class SelfPacedBookingController extends BaseController {
           totalAmount += priceNum * qtyNum;
           const name = item?.name || 'Self-Paced Course';
           const productId = item?.product_id || null;
+          const termMonths = Number(item?.term_months || 0) || null;
           await this.hubspotService.createLineItemForDealWithOverrides(dealId, {
             productId,
             name,
             price: priceNum,
-            quantity: String(qtyNum)
+            quantity: String(qtyNum),
+            termMonths: termMonths
           });
         }
       }

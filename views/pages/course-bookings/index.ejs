@@ -97,6 +97,37 @@ $(document).ready(function() {
       info: "Showing _START_ to _END_ of _TOTAL_ bookings"
     }
   });
+
+  // Style integration links as buttons with icons
+  function styleIntegrationLinks() {
+    $('#bookingsTable tbody tr').each(function() {
+      const cells = $(this).find('td');
+      const mappings = [
+        { index: 5, icon: '/lib/icons/hubspot.ico' },
+        { index: 6, icon: '/lib/icons/forecast.png' },
+        { index: 7, icon: '/lib/icons/calendar.svg' }
+      ];
+
+      mappings.forEach(m => {
+        const cell = $(cells[m.index]);
+        const link = cell.find('a');
+        if (link.length) {
+          // Apply button styles
+          link.addClass('btn btn-sm btn-outline-primary');
+          link.attr('target', '_blank');
+          // Set label and prepend icon if available
+          link.text('');
+          if (m.icon) {
+            link.prepend(`<img src="${m.icon}" alt="" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">`);
+          }
+        }
+      });
+    });
+  }
+
+  // Run once on load and on every draw (pagination/sorting/search)
+  styleIntegrationLinks();
+  $('#bookingsTable').on('draw.dt', styleIntegrationLinks);
 });
 
 function changePipeline() {

@@ -23,7 +23,6 @@
             <div class="card-body">
               <div id="hubspotLoading" class="text-center">
                 <div class="spinner-border text-primary" role="status">
-                  <span class="sr-only">Loading...</span>
                 </div>
                 <p class="mt-2">Loading HubSpot data...</p>
               </div>
@@ -39,6 +38,7 @@
                       <tr><td><strong>Value:</strong></td><td><span id="dealValue">-</span></td></tr>
                       <tr><td><strong>Pipeline:</strong></td><td><span id="dealPipeline">-</span></td></tr>
                       <tr><td><strong>Stage:</strong></td><td><span id="dealStage">-</span></td></tr>
+                      <tr><td><strong>Course Type:</strong></td><td><span id="courseType">-</span></td></tr>
                     </tbody>
                   </table>
                   <div class="text-center">
@@ -120,6 +120,27 @@
       </div>
     </div>
   </div>
+
+  <% /* Self-paced learner status section (hidden by default, shown when course_type is Self-paced) */ %>
+<div id="selfPacedSection" style="display:none" class="container mb-5">
+  <div class="card mt-4">
+    <div class="card-header bg-warning text-dark">
+      <h5 class="mb-0"><i class="fa fa-users"></i> Self-Paced Learners Status</h5>
+    </div>
+    <div class="card-body">
+      <div id="spLearnersLoading" class="text-center" style="display:none;">
+        <div class="spinner-border text-warning" role="status">
+        </div>
+        <p class="mt-2">Loading learners and course status...</p>
+      </div>
+      <div id="spLearnersError" class="alert alert-danger" style="display:none;"></div>
+      <div id="spLearnersContent" style="display:none;">
+        <div id="spLearnersCards"></div>
+        
+      </div>
+    </div>
+  </div>
+</div>
 </section>
 
 <script>
@@ -188,6 +209,11 @@ $(document).ready(function() {
               ? `${deal.properties.owner_details.firstName} ${deal.properties.owner_details.lastName}`
               : 'N/A'
           );
+          $('#courseType').text(deal.properties?.course_type || 'N/A');
+          if ((deal.properties?.course_type || '').toLowerCase() === 'self-paced') {
+            $('#selfPacedSection').show();
+            loadLearnerMatrix(dealId);
+          }
           showContent('hubspot');
         } else {
           showError('hubspot', 'Failed to load HubSpot data');
@@ -257,6 +283,223 @@ $(document).ready(function() {
     $(`#${section}Loading`).hide();
     $(`#${section}Content`).show();
     $(`#${section}Data`).html(`<p class="text-muted">${message}</p>`);
+  }
+
+  // Self-paced learner status section (vertical layout)
+  function loadLearnerMatrix(dealId) {
+    $('#spLearnersLoading').show();
+    $('#spLearnersContent').hide();
+    fetch(`/hubspot/deals/${dealId}/learner-status`)
+      .then(r => r.json())
+      .then(payload => {
+        if (!payload.success) throw new Error(payload.message || 'Failed to fetch learner status');
+        const learners = payload.data.learners || [];
+
+        const container = $('#spLearnersCards');
+        container.empty();
+        learners.forEach(l => {
+          const card = $(
+            '<div class="card mb-3">\
+              <div class="card-header d-flex justify-content-between align-items-center">\
+                <div>\
+                  <h5 class="mb-0 sp-learner-name">' + (l.name || 'Learner') + '</h5>\
+                  <small class="text-muted sp-learner-email">' + l.email + '</small>\
+                </div>\
+                <div class="sp-learner-actions"></div>\
+              </div>\
+              <div class="card-body">\
+                <div class="table-responsive">\
+                  <table class="table table-sm table-striped">\
+                    <thead>\
+                      <tr>\
+                        <th>Course</th>\
+                        <th>Enrolled</th>\
+                        <th>Accessed</th>\
+                      </tr>\
+                    </thead>\
+                    <tbody></tbody>\
+                  </table>\
+                </div>\
+              </div>\
+            </div>'
+          );
+          // Determine if any course needs attention (not enrolled or not accessed)
+          const needsEmail = (l.courses || []).some(c => !(!!c.enrolled && !!c.accessed));
+          if (needsEmail) {
+            const headerBtn = $('<button class="btn btn-sm btn-outline-secondary" type="button">Email instuctions to learner</button>');
+            headerBtn.on('click', async function() {
+              try {
+                headerBtn.prop('disabled', true).text('Sending...');
+                const payload = {
+                  deal_id: hubspotDealId,
+                  contact_email: l.email,
+                  learner_name: l.name || 'Learner',
+                  courses: (l.courses || []).map(c => ({
+                    course_id: c.course_id,
+                    course_name: c.course_name,
+                    enrolled: !!c.enrolled,
+                    accessed: !!c.accessed
+                  }))
+                };
+                const resp = await fetch(`/hubspot/deals/${hubspotDealId}/remind-learner`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                  throw new Error(data.message || 'Failed to send');
+                }
+                
+                // Update button state
+                const emailType = data.data?.emailType || 'email';
+                const subject = data.data?.subject || '';
+                headerBtn.removeClass('btn-outline-secondary').addClass('btn-success')
+                  .text(`${emailType === 'welcome' ? 'Welcome' : 'Reminder'} sent`);
+                
+                // Refresh email history for this specific learner
+                refreshLearnerEmailHistory(hubspotDealId, l.email);
+                
+              } catch (err) {
+                alert('Failed to send email: ' + err.message);
+                headerBtn.prop('disabled', false).text('Email instructions to learner');
+              }
+            });
+            card.find('.sp-learner-actions').append(headerBtn);
+          } else {
+            card.find('.sp-learner-actions').html('<span class="text-muted">All good</span>');
+          }
+          const tbody = card.find('tbody');
+          (l.courses || []).forEach(c => {
+            const enrolled = !!c.enrolled;
+            const accessed = !!c.accessed;
+            const tr = $('<tr/>');
+            tr.append(`<td>${c.course_name || ('Course #' + c.course_id)}</td>`);
+            tr.append(`<td>${enrolled ? '<span class="text-success">Yes</span>' : '<span class="text-muted">No</span>'}</td>`);
+            tr.append(`<td>${accessed ? '<span class="text-success">Yes</span>' : '<span class="text-muted">No</span>'}</td>`);
+            tbody.append(tr);
+          });
+          container.append(card);
+        });
+
+        $('#spLearnersLoading').hide();
+        $('#spLearnersContent').show();
+
+        // Fetch and render email history per learner
+        loadLearnerEmailHistory(dealId);
+      })
+      .catch(err => {
+        $('#spLearnersLoading').hide();
+        $('#spLearnersError').text(err.message).show();
+        $('#spLearnersContent').show();
+      });
+  }
+
+  function loadLearnerEmailHistory(dealId) {
+    fetch(`/hubspot/deals/${dealId}/email-history?group_by_contact=true`)
+      .then(r => r.json())
+      .then(payload => {
+        if (!payload.success) return; // Non-blocking
+        const groups = payload.data || [];
+        groups.forEach(g => {
+          const email = String(g.email || '').toLowerCase();
+          const items = g.items || [];
+          const card = $('#spLearnersCards .card').filter(function(){
+            return $(this).find('.sp-learner-email').text().trim().toLowerCase() === email;
+          }).first();
+          if (!card.length || items.length === 0) return;
+          renderEmailHistory(card, items);
+        });
+      })
+      .catch(() => {});
+  }
+
+  function refreshLearnerEmailHistory(dealId, contactEmail) {
+    fetch(`/hubspot/deals/${dealId}/email-history?group_by_contact=true`)
+      .then(r => r.json())
+      .then(payload => {
+        if (!payload.success) return; // Non-blocking
+        const groups = payload.data || [];
+        const targetGroup = groups.find(g => 
+          String(g.email || '').toLowerCase() === contactEmail.toLowerCase()
+        );
+        
+        if (targetGroup) {
+          const card = $('#spLearnersCards .card').filter(function(){
+            return $(this).find('.sp-learner-email').text().trim().toLowerCase() === contactEmail.toLowerCase();
+          }).first();
+          
+          if (card.length) {
+            // Remove existing email history section
+            card.find('.mt-3').remove();
+            // Render updated email history
+            renderEmailHistory(card, targetGroup.items || []);
+          }
+        }
+      })
+      .catch(() => {});
+  }
+
+  function renderEmailHistory(card, items) {
+    const container = $('<div class="mt-3"/>');
+    container.append('<h6>Recent Emails</h6>');
+    const table = $('<table class="table table-sm"><thead><tr><th>When</th><th>Subject</th><th>Preview</th><th></th></tr></thead><tbody></tbody></table>');
+    const tbody = table.find('tbody');
+    items.slice(0, 10).forEach(it => {
+      const when = it.timestamp ? new Date(it.timestamp).toLocaleString('en-GB') : '';
+      // Extract subject from the first <strong> tag in the HTML (for notes)
+      let subj = it.subject || '';
+      let preview = '';
+      if (it.html) {
+        const tmp = $('<div/>').html(it.html);
+        const strong = tmp.find('strong').first();
+        if (!subj && strong.length) {
+          subj = strong.text().trim();
+        }
+        // Remove the header block (first two paragraphs) from preview
+        const headerDiv = tmp.find('div').first();
+        if (headerDiv.length) headerDiv.remove();
+        preview = tmp.text().trim().slice(0, 140);
+      } else {
+        preview = (it.text || '').slice(0, 140);
+      }
+
+      const tr = $('<tr/>');
+      tr.append(`<td>${when}</td>`);
+      tr.append(`<td>${subj || ''}</td>`);
+      tr.append(`<td>${preview}</td>`);
+
+      const viewTd = $('<td class="text-end"/>');
+      if (it.html) {
+        const btn = $('<button class="btn btn-xs btn-outline-secondary" type="button">+</button>');
+        const detail = $('<div class="mt-2" style="display:none;"/>');
+        detail.html(it.html);
+        btn.on('click', function(){
+          const isShown = detail.is(':visible');
+          if (isShown) {
+            detail.hide();
+            btn.text('+');
+          } else {
+            detail.show();
+            btn.text('−');
+          }
+        });
+        viewTd.append(btn);
+        tr.append(viewTd);
+        const detailRow = $('<tr/>');
+        const detailCell = $('<td colspan="4"/>');
+        detailCell.append(detail);
+        detailRow.append(detailCell);
+        tbody.append(tr);
+        tbody.append(detailRow);
+        return; // continue next item
+      } else {
+        tr.append(viewTd);
+      }
+      tbody.append(tr);
+    });
+    container.append(table);
+    card.find('.card-body').append(container);
   }
 });
 </script>

@@ -1,6 +1,7 @@
 import BaseController from './BaseController.js';
 import { EnrollmentService } from '../services/enrollmentService.js';
 import { MoodleService } from '../services/moodleService.js';
+import { HubSpotService } from '../services/hubspotService.js';
 import { validateApiKey } from '../utils/validation.js';
 import { HTTP_STATUS } from '../config/constants.js';
 
@@ -9,6 +10,7 @@ export class EnrollmentController extends BaseController {
     super();
     this.enrollmentService = new EnrollmentService();
     this.moodleService = new MoodleService();
+    this.hubspotService = new HubSpotService();
   }
 
   // Course enrollment page
@@ -147,101 +149,131 @@ export class EnrollmentController extends BaseController {
     }
   }
 
-  // Verify enrollment token
-  async verifyEnrollment(req, res) {
+  
+
+  // Public: verification by deal_id and email (alternative to token)
+  async verifyEnrollmentByDeal(req, res) {
     try {
-      const { token } = req.params;
+      const { deal_id, email } = req.query;
       const acceptHeader = (req.get('accept') || '').toLowerCase();
 
-      const enrollment = await this.enrollmentService.getEnrollmentByToken(token);
-      
-      if (!enrollment) {
+      if (!deal_id || !email) {
+        // Behave like invalid token
         if (acceptHeader.includes('application/json')) {
-          return this.sendError(res, 'Invalid verification token', 404);
+          return this.sendError(res, 'Missing deal_id or email', HTTP_STATUS.BAD_REQUEST);
         }
+        res.status(HTTP_STATUS.BAD_REQUEST);
         return this.renderPage(req, res, 'pages/enrollments/verify', {
-          title: 'Invalid Token',
-          link: '/enrollments/verify',
-          error: 'Invalid verification token',
+          title: 'Invalid Verification Link',
+          error: 'Invalid verification link. Missing parameters.',
           moodleRootUrl: this.moodleService.getMoodleRootUrl()
         });
       }
 
-      // If enrollment is already completed, just show success
-      if (enrollment.status === 'enrolled') {
-        return this.renderPage(req, res, 'pages/enrollments/verify', {
-          title: 'Enrollment Complete',
-          link: '/enrollments/verify',
-          enrollment: enrollment,
-          enrollmentCompleted: true,
-          moodleRootUrl: this.moodleService.getMoodleRootUrl()
-        });
-      }
-
-      // Check if user now exists in Moodle and auto-complete enrollment if possible
-      let enrollmentResult = null;
-      let moodleUser = null;
-      
+      // Check the email is a Learner on the deal
+      let learnerEmails = [];
       try {
-        moodleUser = await this.moodleService.lookupUserByEmail(enrollment.user_email);
-        
-        if (moodleUser) {
-          if (enrollment.status === 'pending_account_creation') {
-            try {
-              enrollmentResult = await this.enrollmentService.verifyAndCompleteEnrollment(token);
-              
-              if (enrollmentResult.success) {
-                // Refresh enrollment data to get updated status
-                const updatedEnrollment = await this.enrollmentService.getEnrollmentByToken(token);
-                return this.renderPage(req, res, 'pages/enrollments/verify', {
-                  title: 'Enrollment Complete',
-                  link: '/enrollments/verify',
-                  enrollment: updatedEnrollment,
-                  enrollmentCompleted: true,
-                  autoCompleted: true,
-                  moodleRootUrl: this.moodleService.getMoodleRootUrl()
-                });
-              }
-            } catch (enrollmentError) {
-              console.error(`Error during auto-enrollment for ${enrollment.user_email}:`, enrollmentError.message);
-            }
-          }
+        const learners = await this.hubspotService.fetchDealContactsByLabel(deal_id, 'Learner');
+        learnerEmails = (learners || []).map(l => (l.email || '').toLowerCase()).filter(Boolean);
+      } catch (e) {}
+
+      if (!learnerEmails.includes(String(email).toLowerCase())) {
+        if (acceptHeader.includes('application/json')) {
+          return this.sendError(res, 'Email not associated with this deal', HTTP_STATUS.FORBIDDEN);
         }
-      } catch (moodleError) {
-        console.error(`Moodle lookup failed for ${enrollment.user_email}:`, moodleError.message);
-        // Continue to show the manual completion page
+        res.status(HTTP_STATUS.BAD_REQUEST);
+        return this.renderPage(req, res, 'pages/enrollments/verify', {
+          title: 'Invalid Verification Link',
+          error: 'Your email is not associated with this booking.',
+          moodleRootUrl: this.moodleService.getMoodleRootUrl()
+        });
+      }
+
+      // Get moodle course ids and term months from line items
+      let lineItems = [];
+      try {
+        lineItems = await this.hubspotService.fetchDealLineItemsWithProducts(deal_id);
+      } catch (err) {
+        const hsStatus = err?.response?.status;
+        if (hsStatus === 404) {
+          if (acceptHeader.includes('application/json')) {
+            return this.sendError(res, 'Invalid deal_id', HTTP_STATUS.BAD_REQUEST);
+          }
+          res.status(HTTP_STATUS.BAD_REQUEST);
+          return this.renderPage(req, res, 'pages/enrollments/verify', {
+            title: 'Invalid Verification Link',
+            error: 'This booking could not be found.',
+            moodleRootUrl: this.moodleService.getMoodleRootUrl()
+          });
+        }
+        throw err;
+      }
+      const courseEntries = lineItems
+        .map(li => ({ course_id: parseInt(li.moodle_course_id), term_months: Number(li.term_months) }))
+        .filter(e => Number.isFinite(e.course_id));
+
+      if (!courseEntries.length) {
+        if (acceptHeader.includes('application/json')) {
+          return this.sendError(res, 'No Moodle course linked to this deal', HTTP_STATUS.NOT_FOUND);
+        }
+        return this.renderPage(req, res, 'pages/enrollments/verify', {
+          title: 'Invalid Link',
+          error: 'No course found for this booking.',
+          moodleRootUrl: this.moodleService.getMoodleRootUrl()
+        });
+      }
+      // Build per-course statuses using term months if available
+      const statuses = [];
+      for (const entry of courseEntries) {
+        const cid = entry.course_id;
+        const termMonths = Number.isFinite(entry.term_months) && entry.term_months > 0 ? entry.term_months : 12;
+        const s = await this.enrollmentService.getUserCourseStatus(cid, String(email), termMonths);
+        statuses.push({
+          course_id: cid,
+          course_name: s?.course_name || '',
+          enrolled: Boolean(s?.enrolled),
+          accessed: Boolean(s?.accessed),
+          enrollment_date: s?.enrollment_date || null,
+          expiry_date: s?.expiry_date || null
+        });
+      }
+
+      // Fill missing course names from Moodle catalogue as a fallback
+      if (statuses.some(e => !e.course_name)) {
+        try {
+          const moodleCourses = await this.moodleService.fetchCourses();
+          const byId = new Map(moodleCourses.map(c => [parseInt(c.id), (c.fullname || c.shortname || '').trim()]));
+          statuses.forEach(e => {
+            if (!e.course_name) {
+              const n = byId.get(parseInt(e.course_id));
+              if (n) e.course_name = n;
+            }
+          });
+        } catch (_) {
+          // ignore
+        }
       }
 
       if (acceptHeader.includes('application/json')) {
-        return this.sendSuccess(res, enrollment, 'Enrollment found');
+        return this.sendSuccess(res, statuses, 'Enrollment status');
       }
 
-      // Render verification page with current status
       return this.renderPage(req, res, 'pages/enrollments/verify', {
-        title: 'Complete Your Course Enrollment',
-        link: '/enrollments/verify',
-        enrollment: enrollment,
-        moodleUser: moodleUser,
-        enrollmentCompleted: false,
+        title: 'Your Course Access',
+        email: String(email),
+        enrollments: statuses,
         moodleRootUrl: this.moodleService.getMoodleRootUrl()
       });
     } catch (error) {
+      const hsStatus = error?.response?.status;
+      if (hsStatus === 404) {
+        return this.sendError(res, 'Invalid deal_id', HTTP_STATUS.BAD_REQUEST);
+      }
       return this.sendError(res, error.message);
     }
   }
 
-  // Complete pending enrollment
-  async completeEnrollment(req, res) {
-    try {
-      const { token } = req.params;
-      
-      const result = await this.enrollmentService.verifyAndCompleteEnrollment(token);
-      
-      return this.sendSuccess(res, result, 'Enrollment completed successfully');
-    } catch (error) {
-      return this.sendError(res, error.message);
-    }
-  }
+  
 
   // Resend enrollment email
   async resendEmail(req, res) {
@@ -256,24 +288,7 @@ export class EnrollmentController extends BaseController {
     }
   }
 
-  // Resend enrollment email by token (public route)
-  async resendEmailByToken(req, res) {
-    try {
-      const { token } = req.params;
-      
-      // First verify the token is valid
-      const enrollment = await this.enrollmentService.getEnrollmentByToken(token);
-      if (!enrollment) {
-        return this.sendError(res, 'Invalid verification token', 404);
-      }
-      
-      const result = await this.enrollmentService.resendEnrollmentEmail(enrollment._id);
-      
-      return this.sendSuccess(res, result, 'Enrollment email resent successfully');
-    } catch (error) {
-      return this.sendError(res, error.message);
-    }
-  }
+  
 
   // Browse enrollments page
   async browse(req, res) {
