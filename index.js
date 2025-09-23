@@ -130,24 +130,21 @@ app.use('/auth', authLimiter);
 // Use authentication routes
 app.use('/auth', authRoutes);
 
-// CSRF protection for state-changing requests (skip public and OAuth paths)
-const csrfProtection = csurf();
+// CSRF protection: generate token on all non-exempt routes; enforce on non-safe methods
+const csrfProtection = csurf(); // defaults ignoreMethods: ['GET','HEAD','OPTIONS']
 app.use((req, res, next) => {
-  const methodSafe = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
   const skip = req.path.startsWith('/auth/')
     || req.path.startsWith('/webhooks')
     || req.path.startsWith('/enrollments/verify')
     || req.path.startsWith('/enrollments/status');
-  if (methodSafe || skip) return next();
+  if (skip) return next();
   return csrfProtection(req, res, next);
 });
-// Expose CSRF token to views when available
+// Expose CSRF token to views on pages where middleware ran
 app.use((req, res, next) => {
-  try {
-    if (req.csrfToken) {
-      res.locals.csrfToken = req.csrfToken();
-    }
-  } catch (_) {}
+  if (typeof req.csrfToken === 'function') {
+    try { res.locals.csrfToken = req.csrfToken(); } catch (_) {}
+  }
   next();
 });
 
