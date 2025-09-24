@@ -7,6 +7,38 @@ export class EnrollmentService {
     this.moodleService = new MoodleService();
   }
 
+  // Aggregate Moodle users from cached course enrollments
+  async buildAggregatedUsersFromCache() {
+    const MoodleCourseEnrollments = (await import('../models/MoodleCourseEnrollments.js')).default;
+    const docs = await MoodleCourseEnrollments.find({}).lean();
+    const usersByKey = new Map();
+    for (const doc of docs) {
+      const courseId = doc.course_id;
+      const courseName = doc.course_name || String(courseId);
+      for (const u of (doc.enrollments || [])) {
+        const email = (u.email || '').toLowerCase();
+        const key = email || `moodle:${u.moodle_user_id}`;
+        if (!usersByKey.has(key)) {
+          usersByKey.set(key, {
+            key,
+            email: email || null,
+            moodle_user_id: u.moodle_user_id || null,
+            fullname: u.fullname || u.username || '',
+            username: u.username || null,
+            firstaccess: u.firstaccess || null,
+            lastaccess: u.lastaccess || null,
+            courses: []
+          });
+        }
+        usersByKey.get(key).courses.push({ id: courseId, fullname: courseName, accessed: Boolean(u.lastaccess) });
+      }
+    }
+    return Array.from(usersByKey.values()).map(r => ({
+      ...r,
+      course_count: Array.isArray(r.courses) ? r.courses.length : 0
+    }));
+  }
+
   // Generate unique secret token
   generateSecretToken() {
     return crypto.randomBytes(32).toString('hex');

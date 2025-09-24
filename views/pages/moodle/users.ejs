@@ -1,0 +1,198 @@
+<%- include('../../partials/header') %>
+
+<section class="content-block light-grey">
+  <h1>Moodle Users & Enrollments</h1>
+  <p>This table loads live from Moodle via AJAX.</p>
+
+  <style>
+    .filter-icon { cursor: pointer; margin-left: 6px; opacity: 0.6; }
+    .filter-icon.filter-active { color: #0b5ed7; opacity: 1; }
+    .filter-overlay { position: absolute; z-index: 9999; background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); padding: 10px; width: 280px; }
+    .filter-overlay h4 { margin: 0 0 8px 0; font-size: 14px; }
+    .filter-overlay .options { max-height: 220px; overflow: auto; border: 1px solid #eee; padding: 6px; border-radius: 4px; }
+    .filter-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+    .filter-chip { display:inline-block; padding: 2px 6px; font-size: 11px; background:#eef2ff; border-radius: 10px; margin-left:6px; }
+  </style>
+
+  <table id="usersTable" class="display" style="width:100%">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>ODI Member?</th>
+        <th>Membership Type</th>
+        <th>Course count</th>
+        <th>Courses</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<script src="/lib/DataTables/datatables.min.js"></script>
+<script>
+  $(document).ready(function () {
+    let memberFilterSet = new Set(); // values: 'yes','no'
+    let typeFilterSet = new Set();   // membership types (lowercased)
+    let coursesFilterSet = new Set(); // course IDs as strings
+
+    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex, rowData) {
+      const r = rowData; // rowData provided by DataTables when using dataSrc
+      // Member filter
+      const isMember = (r.company_membership_active || ((r.membership_status||'').toLowerCase()==='active')) ? 'yes' : 'no';
+      if (memberFilterSet.size > 0 && !memberFilterSet.has(isMember)) return false;
+      // Type filter
+      if (typeFilterSet.size > 0) {
+        const typeVal = (r.membership_type || '').toLowerCase();
+        if (!typeFilterSet.has(typeVal)) return false;
+      }
+      // Courses filter (any-of)
+      if (coursesFilterSet.size > 0) {
+        const ids = Array.isArray(r.courses) ? r.courses.map(c => String(c.id)) : [];
+        const match = ids.some(id => coursesFilterSet.has(String(id)));
+        if (!match) return false;
+      }
+      return true;
+    });
+
+    const table = $('#usersTable').DataTable({
+      ajax: {
+        url: '/moodle/users',
+        headers: { 'Accept': 'application/json' },
+        dataSrc: function (json) {
+          if (json && json.success && Array.isArray(json.data)) {
+            // Prepare header filter overlays after data arrival
+            setupHeaderFilters(json.data);
+            return json.data;
+          }
+          return [];
+        }
+      },
+      columns: [
+        { data: null, render: r => {
+            if (r.contact_id) {
+              const portalId = '<%= portalId || "" %>';
+              const url = portalId ? `https://app.hubspot.com/contacts/${portalId}/record/0-1/${r.contact_id}` : `https://app.hubspot.com/contacts/record/0-1/${r.contact_id}`;
+              return `<a href="${url}" target="_blank" rel="noopener noreferrer">${r.fullname || ''}</a>`;
+            }
+            return r.fullname || '';
+          } },
+        { data: 'email', defaultContent: '' },
+        { data: null, render: r => (r.company_membership_active || (r.membership_status||'').toLowerCase()==='active') ? 'Yes' : 'No' },
+        { data: null, render: r => {
+            if (r.membership_type) return r.membership_type;
+            if (r.company_membership_active) return 'Via organisation (unknown type)';
+            return '';
+          } },
+        { data: 'course_count' },
+        { data: 'courses', render: arr => Array.isArray(arr) ? arr.map(c => {
+            const label = `${c.fullname} (${c.id})`;
+            if (c.accessed) return `<strong>${label}</strong>`;
+            return `<em>${label}</em>`;
+          }).join('<br>') : '' }
+      ],
+      order: [[0, 'asc']]
+    });
+
+    function setupHeaderFilters(rows) {
+      // Build unique lists
+      const typeSet = new Set(rows.map(r => (r.membership_type || '').trim()).filter(Boolean).map(s => s.toLowerCase()));
+      const courseMap = new Map();
+      rows.forEach(r => (r.courses||[]).forEach(c => courseMap.set(String(c.id), c.fullname)));
+
+      // Add filter icons to specific headers
+      const headerMap = {
+        member: 2,
+        type: 3,
+        courses: 5
+      };
+      const ths = $('#usersTable thead th');
+      Object.entries(headerMap).forEach(([key, idx]) => {
+        const $th = $(ths.get(idx));
+        if ($th.find('.filter-icon').length) return;
+        const $icon = $('<span class="filter-icon" title="Filter">\u25BC</span>');
+        $th.append($icon);
+        $icon.on('click', function(e) {
+          e.stopPropagation();
+          showOverlayFor(key, $(this));
+        });
+
+        // Visual indicator toggle helper
+        $icon.data('updateActive', function() {
+          if (key === 'member') $icon.toggleClass('filter-active', memberFilterSet.size > 0);
+          if (key === 'type') $icon.toggleClass('filter-active', typeFilterSet.size > 0);
+          if (key === 'courses') $icon.toggleClass('filter-active', coursesFilterSet.size > 0);
+        });
+      });
+
+      // Global click to close overlays
+      $(document).on('click', function() { $('.filter-overlay').remove(); });
+
+      function showOverlayFor(key, $anchor) {
+        $('.filter-overlay').remove();
+        const off = $anchor.offset();
+        const $ov = $('<div class="filter-overlay"></div>');
+        let content = '';
+        if (key === 'member') {
+          content += '<h4>ODI Member?</h4><div class="options">'
+            + `<label><input type="checkbox" value="yes" ${memberFilterSet.has('yes')?'checked':''}/> Yes</label><br>`
+            + `<label><input type="checkbox" value="no" ${memberFilterSet.has('no')?'checked':''}/> No</label>`
+            + '</div>';
+        } else if (key === 'type') {
+          content += '<h4>Membership Type</h4><div class="options">';
+          Array.from(typeSet).sort().forEach(t => {
+            content += `<label><input type="checkbox" value="${t}" ${typeFilterSet.has(t)?'checked':''}/> ${$('<div>').text(t).html()}</label><br>`;
+          });
+          content += '</div>';
+        } else if (key === 'courses') {
+          content += '<h4>Courses (any-of)</h4><div class="options">';
+          Array.from(courseMap.entries()).sort((a,b)=>a[1].localeCompare(b[1])).forEach(([id, name]) => {
+            const checked = coursesFilterSet.has(String(id)) ? 'checked' : '';
+            content += `<label><input type="checkbox" value="${id}" ${checked}/> ${$('<div>').text(name).html()} (${id})</label><br>`;
+          });
+          content += '</div>';
+        }
+        content += '<div class="filter-actions">'
+          + '<button type="button" class="btn btn-sm btn-secondary btn-clear">Clear</button>'
+          + '<button type="button" class="btn btn-sm btn-primary btn-apply">Apply</button>'
+          + '</div>';
+        $ov.html(content);
+        $('body').append($ov);
+        $ov.css({ top: (off.top + $anchor.height() + 6) + 'px', left: (off.left - 240) + 'px' });
+        $ov.on('click', function(e){ e.stopPropagation(); });
+
+        $ov.find('.btn-clear').on('click', function(){
+          if (key === 'member') memberFilterSet.clear();
+          if (key === 'type') typeFilterSet.clear();
+          if (key === 'courses') coursesFilterSet.clear();
+          table.draw();
+          updateIndicators();
+          $ov.remove();
+        });
+        $ov.find('.btn-apply').on('click', function(){
+          if (key === 'member') {
+            memberFilterSet = new Set($ov.find('input[type=checkbox]:checked').map(function(){return this.value;}).get());
+          } else if (key === 'type') {
+            typeFilterSet = new Set($ov.find('input[type=checkbox]:checked').map(function(){return this.value;}).get());
+          } else if (key === 'courses') {
+            coursesFilterSet = new Set($ov.find('input[type=checkbox]:checked').map(function(){return String(this.value);}).get());
+          }
+          table.draw();
+          updateIndicators();
+          $ov.remove();
+        });
+      }
+
+      function updateIndicators() {
+        $('#usersTable thead th .filter-icon').each(function(){
+          const updater = $(this).data('updateActive');
+          if (typeof updater === 'function') updater();
+        });
+      }
+    }
+  });
+</script>
+
+<%- include('../../partials/footer') %>
+
+

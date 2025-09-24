@@ -7,6 +7,21 @@ export class MoodleService {
     this.functionName = 'core_course_get_courses';
   }
 
+  // Helper to fetch all courses (if not present already)
+  async fetchCourses() {
+    try {
+      const params = this.buildParams({ wsfunction: 'core_course_get_courses' });
+      const response = await axios.get(this.baseUrl, { params });
+      if (response.data && response.data.exception) {
+        throw new Error(response.data.message || 'Failed to fetch courses');
+      }
+      return response.data || [];
+    } catch (error) {
+      console.error('Error fetching courses:', error.message);
+      return [];
+    }
+  }
+
   // Get the Moodle root URL for frontend links
   getMoodleRootUrl() {
     return process.env.MOODLE_ROOT || 'https://moodle.learndata.info';
