@@ -6,6 +6,7 @@ import { EmailService } from '../services/emailService.js';
 import { buildWelcomeEmail, buildReminderEmail } from '../services/emailTemplates.js';
 import { ForecastService } from '../services/forecastService.js';
 import { EnrollmentService } from '../services/enrollmentService.js';
+import { MoodleService } from '../services/moodleService.js';
 import { validateApiKey, validateProjectId } from '../utils/validation.js';
 import { HTTP_STATUS, HUBSPOT_CONFIG } from '../config/constants.js';
 
@@ -16,6 +17,7 @@ export class HubSpotController extends BaseController {
     this.forecastService = new ForecastService();
     this.enrollmentService = new EnrollmentService();
     this.emailService = new EmailService();
+    this.moodleService = new MoodleService();
   }
 
   // In-memory queue for reminder jobs by deal
@@ -106,12 +108,44 @@ export class HubSpotController extends BaseController {
         const firstName = learner?.first_name || '';
         const lastName = learner?.last_name || '';
         const fullName = `${firstName} ${lastName}`.trim() || 'Learner';
-        const row = { email, name: fullName, courses: [] };
+        // Ensure Moodle user exists for this learner before status checks
+        let moodleUserId = null;
+        try {
+          if (this.moodleService && this.moodleService.ensureUser) {
+            moodleUserId = await this.moodleService.ensureUser({ email, firstName, lastName });
+          } else {
+            const existing = await this.moodleService.lookupUserByEmail(email);
+            moodleUserId = existing?.id || null;
+          }
+        } catch (error) {
+          try {
+            const existing = await this.moodleService.lookupUserByEmail(email);
+            moodleUserId = existing?.id || null;
+          } catch (lookupError) {
+            
+          }
+        }
+        // Get Moodle login info for display
+        let loginInfo = { exists: false, ever_logged_in: false, last_access: null };
+        try {
+          loginInfo = await this.moodleService.getUserLoginInfoByEmail(email);
+        } catch (_) {}
+        const row = { email, name: fullName, login: loginInfo, courses: [] };
         for (const entry of courseEntries) {
           const cid = entry.course_id;
           const termMonths = Number.isFinite(entry.term_months) && entry.term_months > 0 ? entry.term_months : 12;
           try {
-            const status = await this.enrollmentService.getUserCourseStatus(cid, email, termMonths);
+            let status = await this.enrollmentService.getUserCourseStatus(cid, email, termMonths);
+            if (!status?.enrolled && moodleUserId) {
+              try {
+                await this.moodleService.enrolUserInCourse(moodleUserId, cid, termMonths);
+                status = await this.enrollmentService.getUserCourseStatus(cid, email, termMonths);
+              } catch (enrollError) {
+                
+              }
+            } else if (!status?.enrolled && !moodleUserId) {
+              
+            }
             row.courses.push({
               course_id: cid,
               course_name: status?.course_name || entry.course_name || '',
@@ -303,12 +337,42 @@ export class HubSpotController extends BaseController {
       }))
       .filter(e => Number.isFinite(e.course_id));
 
+    // Best-effort learner name lookup (used for Moodle user creation and email)
+    let firstName = '';
+    let lastName = '';
+    let learnerName = 'Learner';
+    try {
+      const matches = await this.hubspotService.searchContactsByTerm(contact_email);
+      const first = matches?.[0]?.properties || {};
+      firstName = first.firstname || first.firstName || '';
+      lastName = first.lastname || first.lastName || '';
+      const full = `${firstName} ${lastName}`.trim();
+      learnerName = full || first.name || first.fullname || learnerName;
+    } catch (_) {}
+
+    // Ensure Moodle user exists (auth oauth2), but do not modify if already present
+    let moodleUserId = null;
+    try {
+      if (this.moodleService && this.moodleService.ensureUser) {
+        moodleUserId = await this.moodleService.ensureUser({ email: contact_email, firstName, lastName });
+      }
+    } catch (_) {
+      const existing = await this.moodleService.lookupUserByEmail(contact_email);
+      moodleUserId = existing?.id || null;
+    }
+
     const statuses = [];
     for (const entry of courseEntries) {
       const cid = entry.course_id;
       const termMonths = Number.isFinite(entry.term_months) && entry.term_months > 0 ? entry.term_months : 12;
       try {
-        const status = await this.enrollmentService.getUserCourseStatus(cid, contact_email, termMonths);
+        let status = await this.enrollmentService.getUserCourseStatus(cid, contact_email, termMonths);
+        if (!status?.enrolled && moodleUserId) {
+          try {
+            await this.moodleService.enrolUserInCourse(moodleUserId, cid, termMonths);
+            status = await this.enrollmentService.getUserCourseStatus(cid, contact_email, termMonths);
+          } catch (_) {}
+        }
         statuses.push({
           course_id: cid,
           course_name: status?.course_name || entry.course_name || '',
@@ -331,15 +395,7 @@ export class HubSpotController extends BaseController {
     const anyEnrolled = pendingCourses.some(c => c.enrolled);
     const verifyUrl = `${baseUrl}/enrollments/verify?deal_id=${deal_id}&email=${encodeURIComponent(contact_email)}`;
 
-    let learnerName = 'Learner';
-    try {
-      const matches = await this.hubspotService.searchContactsByTerm(contact_email);
-      const first = matches?.[0]?.properties || {};
-      const firstName = first.firstname || first.firstName || '';
-      const lastName = first.lastname || first.lastName || '';
-      const full = `${firstName} ${lastName}`.trim();
-      learnerName = full || first.name || first.fullname || learnerName;
-    } catch (_) {}
+    // learnerName determined above
 
     const template = determinedEmailType === 'welcome'
       ? buildWelcomeEmail({ moodleRootUrl: moodleRoot, courses: pendingCourses, verifyUrl, anyEnrolled, learnerName })
