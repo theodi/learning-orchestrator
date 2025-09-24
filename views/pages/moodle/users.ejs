@@ -7,9 +7,10 @@
   <style>
     .filter-icon { cursor: pointer; margin-left: 6px; opacity: 0.6; }
     .filter-icon.filter-active { color: #0b5ed7; opacity: 1; }
-    .filter-overlay { position: absolute; z-index: 9999; background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); padding: 10px; width: 280px; }
+    .filter-overlay { position: absolute; z-index: 9999; background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); padding: 10px; width: 500px; }
     .filter-overlay h4 { margin: 0 0 8px 0; font-size: 14px; }
     .filter-overlay .options { max-height: 220px; overflow: auto; border: 1px solid #eee; padding: 6px; border-radius: 4px; }
+    .filter-overlay .opt { padding: 2px 0; }
     .filter-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
     .filter-chip { display:inline-block; padding: 2px 6px; font-size: 11px; background:#eef2ff; border-radius: 10px; margin-left:6px; }
   </style>
@@ -27,6 +28,9 @@
     </thead>
     <tbody></tbody>
   </table>
+  <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+    <button id="exportCsv" class="btn btn-sm btn-outline-primary">Export CSV</button>
+  </div>
 </section>
 
 <script src="/lib/DataTables/datatables.min.js"></script>
@@ -35,6 +39,7 @@
     let memberFilterSet = new Set(); // values: 'yes','no'
     let typeFilterSet = new Set();   // membership types (lowercased)
     let coursesFilterSet = new Set(); // course IDs as strings
+    let excludeInternal = false; // exclude @theodi.org emails
 
     $.fn.dataTable.ext.search.push(function(settings, data, dataIndex, rowData) {
       const r = rowData; // rowData provided by DataTables when using dataSrc
@@ -51,6 +56,11 @@
         const ids = Array.isArray(r.courses) ? r.courses.map(c => String(c.id)) : [];
         const match = ids.some(id => coursesFilterSet.has(String(id)));
         if (!match) return false;
+      }
+      // Email domain exclusion
+      if (excludeInternal) {
+        const em = String(r.email || '').toLowerCase();
+        if (em.endsWith('@theodi.org')) return false;
       }
       return true;
     });
@@ -94,6 +104,35 @@
       order: [[0, 'asc']]
     });
 
+    // CSV export of current filtered rows
+    $('#exportCsv').on('click', function() {
+      const rows = table.rows({ search: 'applied' }).data().toArray();
+      const headers = ['Name','Email','ODI Member?','Membership Type','Course count','Courses'];
+      const csvRows = [headers];
+      rows.forEach(r => {
+        const member = (r.company_membership_active || ((r.membership_status||'').toLowerCase()==='active')) ? 'Yes' : 'No';
+        const type = r.membership_type ? r.membership_type : (r.company_membership_active ? 'Via organisation (unknown type)' : '');
+        const courses = Array.isArray(r.courses) ? r.courses.map(c => `${c.fullname} (${c.id})${c.accessed?' [accessed]':''}`).join('; ') : '';
+        const row = [r.fullname||'', r.email||'', member, type, String(r.course_count||0), courses];
+        csvRows.push(row);
+      });
+      const escapeCsv = (v) => {
+        const s = String(v==null?'':v);
+        if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+        return s;
+      };
+      const csvStr = csvRows.map(r => r.map(escapeCsv).join(',')).join('\n');
+      const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `moodle_users_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+
     function setupHeaderFilters(rows) {
       // Build unique lists
       const typeSet = new Set(rows.map(r => (r.membership_type || '').trim()).filter(Boolean).map(s => s.toLowerCase()));
@@ -102,6 +141,7 @@
 
       // Add filter icons to specific headers
       const headerMap = {
+        email: 1,
         member: 2,
         type: 3,
         courses: 5
@@ -119,6 +159,7 @@
 
         // Visual indicator toggle helper
         $icon.data('updateActive', function() {
+          if (key === 'email') $icon.toggleClass('filter-active', excludeInternal);
           if (key === 'member') $icon.toggleClass('filter-active', memberFilterSet.size > 0);
           if (key === 'type') $icon.toggleClass('filter-active', typeFilterSet.size > 0);
           if (key === 'courses') $icon.toggleClass('filter-active', coursesFilterSet.size > 0);
@@ -133,7 +174,11 @@
         const off = $anchor.offset();
         const $ov = $('<div class="filter-overlay"></div>');
         let content = '';
-        if (key === 'member') {
+        if (key === 'email') {
+          content += '<h4>Email</h4><div class="options">'
+            + `<label><input type="checkbox" class="opt-exclude-internal" ${excludeInternal?'checked':''}/> Exclude @theodi.org</label>`
+            + '</div>';
+        } else if (key === 'member') {
           content += '<h4>ODI Member?</h4><div class="options">'
             + `<label><input type="checkbox" value="yes" ${memberFilterSet.has('yes')?'checked':''}/> Yes</label><br>`
             + `<label><input type="checkbox" value="no" ${memberFilterSet.has('no')?'checked':''}/> No</label>`
@@ -145,12 +190,15 @@
           });
           content += '</div>';
         } else if (key === 'courses') {
-          content += '<h4>Courses (any-of)</h4><div class="options">';
+          content += '<h4>Courses (any-of)</h4>'
+            + '<input type="text" class="form-control form-control-sm filter-search" placeholder="Search courses..." style="margin:6px 0 6px 0;">'
+            + '<div class="options">';
           Array.from(courseMap.entries()).sort((a,b)=>a[1].localeCompare(b[1])).forEach(([id, name]) => {
             const checked = coursesFilterSet.has(String(id)) ? 'checked' : '';
-            content += `<label><input type="checkbox" value="${id}" ${checked}/> ${$('<div>').text(name).html()} (${id})</label><br>`;
+            content += `<div class="opt"><label><input type="checkbox" value="${id}" ${checked}/> ${$('<div>').text(name).html()} (${id})</label></div>`;
           });
-          content += '</div>';
+          content += '</div>'
+            + '<div style="display:flex; justify-content:flex-end; margin-top:6px;"><button type="button" class="btn btn-sm btn-outline-secondary btn-select-all">Select all (filtered)</button></div>';
         }
         content += '<div class="filter-actions">'
           + '<button type="button" class="btn btn-sm btn-secondary btn-clear">Clear</button>'
@@ -161,7 +209,25 @@
         $ov.css({ top: (off.top + $anchor.height() + 6) + 'px', left: (off.left - 240) + 'px' });
         $ov.on('click', function(e){ e.stopPropagation(); });
 
+        // Live filter inside options (for courses)
+        const $search = $ov.find('.filter-search');
+        if ($search.length) {
+          $search.on('input', function(){
+            const q = $(this).val().toString().toLowerCase();
+            $ov.find('.options .opt').each(function(){
+              const txt = $(this).text().toLowerCase();
+              $(this).toggle(txt.indexOf(q) !== -1);
+            });
+          });
+        }
+
+        // Select all visible (courses)
+        $ov.find('.btn-select-all').on('click', function(){
+          $ov.find('.options .opt:visible input[type=checkbox]').prop('checked', true);
+        });
+
         $ov.find('.btn-clear').on('click', function(){
+          if (key === 'email') excludeInternal = false;
           if (key === 'member') memberFilterSet.clear();
           if (key === 'type') typeFilterSet.clear();
           if (key === 'courses') coursesFilterSet.clear();
@@ -170,7 +236,9 @@
           $ov.remove();
         });
         $ov.find('.btn-apply').on('click', function(){
-          if (key === 'member') {
+          if (key === 'email') {
+            excludeInternal = $ov.find('.opt-exclude-internal').is(':checked');
+          } else if (key === 'member') {
             memberFilterSet = new Set($ov.find('input[type=checkbox]:checked').map(function(){return this.value;}).get());
           } else if (key === 'type') {
             typeFilterSet = new Set($ov.find('input[type=checkbox]:checked').map(function(){return this.value;}).get());
