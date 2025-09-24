@@ -328,6 +328,12 @@ $(document).ready(function() {
               </div>\
             </div>'
           );
+          // Insert Moodle login info under name/email
+          const login = l.login || {};
+          const lastAccessStr = login.last_access ? new Date(login.last_access).toLocaleString('en-GB') : '-';
+          const loginInfoEl = $('<div class="small text-muted mt-1"/>')
+            .text(`Has logged in: ${login.ever_logged_in ? 'Yes' : 'No'}  ·  Last access: ${lastAccessStr}`);
+          card.find('.sp-learner-email').after(loginInfoEl);
           // Determine if any course needs attention (not enrolled or not accessed)
           const needsEmail = (l.courses || []).some(c => !(!!c.enrolled && !!c.accessed));
           if (needsEmail) {

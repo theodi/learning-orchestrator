@@ -85,6 +85,77 @@ export class MoodleService {
     }
   }
 
+  usernameFromEmail(email) {
+    return email.toLowerCase().replace(/[^a-z0-9._-]/g, '_');
+  }
+
+  // Create a Moodle user (auth defaults to oauth2). Returns created user id.
+  async createUser({ email, firstName, lastName, username = null, auth = 'oauth2', suspended = 0 }) {
+    try {
+      const users = [{
+        username: (this.usernameFromEmail(username) || this.usernameFromEmail(email)).toString(),
+        password: Math.random().toString(36).slice(2) + 'Aa1!',
+        firstname: (firstName || '').toString(),
+        lastname: (lastName || '').toString(),
+        email: email.toString(),
+        auth: auth
+      }];
+
+      const params = this.buildParams({
+        wsfunction: 'core_user_create_users',
+        users
+      });
+
+      const body = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => body.append(k, String(v)));  
+      // Moodle core_user_create_users expects POST, not GET
+      const response = await axios.post(
+        this.baseUrl,                  // e.g. https://yourmoodle/webservice/rest/server.php
+        body.toString(),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      );
+
+      if (response.data && response.data.exception) {
+        throw new Error(response.data.message || 'User creation failed');
+      }
+
+      const created = Array.isArray(response.data) ? response.data[0] : null;
+      if (!created || !created.id) {
+        throw new Error('User creation failed: no id returned');
+      }
+      return created.id;
+    } catch (error) {
+      const details = error.response?.data || error.message;
+      throw new Error(typeof details === 'string' ? details : (details?.message || 'Failed to create Moodle user'));
+    }
+  }
+
+  // Ensure a Moodle user exists and return id. If missing, create with oauth2 auth.
+  async ensureUser({ email, firstName, lastName }) {
+    const existing = await this.lookupUserByEmail(email);
+    if (existing && existing.id) {
+      return existing.id;
+    }
+    const userId = await this.createUser({ email, firstName, lastName, username: email, auth: 'oauth2', suspended: 0 });
+    return userId;
+  }
+
+  // Get basic login info for a user by email
+  async getUserLoginInfoByEmail(email) {
+    try {
+      const user = await this.lookupUserByEmail(email);
+      if (!user) return { exists: false, ever_logged_in: false, last_access: null };
+      const last = Number(user.lastaccess || user.lastlogin || 0);
+      return {
+        exists: true,
+        ever_logged_in: last > 0,
+        last_access: last > 0 ? new Date(last * 1000).toISOString() : null
+      };
+    } catch (_) {
+      return { exists: false, ever_logged_in: false, last_access: null };
+    }
+  }
+
   // Enrol user in course
   async enrolUserInCourse(userId, courseId, enrolmentDurationMonths = 12) {
     try {
@@ -104,23 +175,16 @@ export class MoodleService {
         wsfunction: 'enrol_manual_enrol_users',
         enrolments: [enrolmentData]
       });
-
-      const response = await axios.get(this.baseUrl, { params });
+      const response = await axios.post(this.baseUrl, null, { params });
       
       if (response.data && response.data.exception) {
         throw new Error(response.data.message || 'Enrolment failed');
       }
-
       return {
         success: true,
         enrolmentEndDate: enrolmentEndDate
       };
     } catch (error) {
-      console.error('Error enrolling user in course:', error.message);
-      if (error.response) {
-        console.error('Response data:', error.response.data);
-        console.error('Response status:', error.response.status);
-      }
       throw new Error(`Failed to enroll user: ${error.message}`);
     }
   }

@@ -224,10 +224,63 @@ export class EnrollmentController extends BaseController {
       }
       // Build per-course statuses using term months if available
       const statuses = [];
+      // Ensure Moodle user exists for this learner before enrollment checks
+      let moodleUserId = null;
+      try {
+        if (this.moodleService && this.moodleService.ensureUser) {
+          // Prefer names from the deal's Learner list
+          let firstName = '';
+          let lastName = '';
+          try {
+            const learnerObj = (await this.hubspotService.fetchDealContactsByLabel(deal_id, 'Learner') || [])
+              .find(l => String(l.email || '').toLowerCase() === String(email).toLowerCase());
+            if (learnerObj) {
+              firstName = learnerObj.first_name || learnerObj.firstname || '';
+              lastName = learnerObj.last_name || learnerObj.lastname || '';
+              
+            }
+          } catch (e) {
+            
+          }
+          // Fallback to HubSpot contact search if still missing
+          if (!firstName && !lastName) {
+            try {
+              const matches = await this.hubspotService.searchContactsByTerm(String(email));
+              const props = matches?.[0]?.properties || {};
+              firstName = props.firstname || props.firstName || '';
+              lastName = props.lastname || props.lastName || '';
+              
+            } catch (e) {
+              
+            }
+          }
+          moodleUserId = await this.moodleService.ensureUser({ email: String(email), firstName, lastName });
+        } else {
+          const existing = await this.moodleService.lookupUserByEmail(String(email));
+          moodleUserId = existing?.id || null;
+        }
+      } catch (error) {
+        try {
+          const existing = await this.moodleService.lookupUserByEmail(String(email));
+          moodleUserId = existing?.id || null;
+        } catch (lookupError) {
+          moodleUserId = null;
+        }
+      }
       for (const entry of courseEntries) {
         const cid = entry.course_id;
         const termMonths = Number.isFinite(entry.term_months) && entry.term_months > 0 ? entry.term_months : 12;
-        const s = await this.enrollmentService.getUserCourseStatus(cid, String(email), termMonths);
+        let s = await this.enrollmentService.getUserCourseStatus(cid, String(email), termMonths);
+        if (!s?.enrolled && Number.isFinite(moodleUserId)) {
+          try {
+            await this.moodleService.enrolUserInCourse(moodleUserId, cid, termMonths);
+            s = await this.enrollmentService.getUserCourseStatus(cid, String(email), termMonths);
+          } catch (enrollError) {
+            
+          }
+        } else if (!s?.enrolled && !Number.isFinite(moodleUserId)) {
+          
+        }
         statuses.push({
           course_id: cid,
           course_name: s?.course_name || '',
