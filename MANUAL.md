@@ -1,4 +1,4 @@
-# OLWO User Manual
+# User Manual
 
 OLWO (ODI Learning Workflow Orchestrator) helps the Learning team move bookings from HubSpot into delivery: creating projects, scheduling tutors, enrolling learners, and keeping everyone informed.
 

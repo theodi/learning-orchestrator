@@ -220,6 +220,10 @@ app.use("/self-paced-bookings", ensureAuthenticated, selfPacedBookingsRoutes);
 import webhooksRoutes from "./routes/webhooks.js";
 app.use("/webhooks", publicLimiter, webhooksRoutes);
 
+// Manual/help routes
+import manualRoutes from "./routes/manual.js";
+app.use("/manual", ensureAuthenticated, manualRoutes);
+
 //Keep this at the END!
 app.get('*', function(req, res){
   const page = {

@@ -1,0 +1,56 @@
+<%- include('../partials/header') %>
+
+<section class="content-block light-grey">
+  <div class="container">
+    <h1>Help & User Guide</h1>
+    <div id="manualContainer" class="panel panel-default" style="padding:16px; background:#fff;"></div>
+  </div>
+</section>
+
+<script>
+  (function(){
+    function escapeHtml(str){
+      return str.replace(/[&<>]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]); });
+    }
+    // Minimal markdown renderer for headings, lists, code blocks; fallback to pre
+    function renderMarkdown(md){
+      // Code blocks ```
+      md = md.replace(/```[\s\S]*?```/g, function(block){
+        const code = block.replace(/^```[a-zA-Z]*\n?|```$/g, '');
+        return '<pre><code>' + escapeHtml(code) + '</code></pre>';
+      });
+      // Headings ## and ### and #
+      md = md.replace(/^###\s+(.*)$/gm, '<h3>$1</h3>');
+      md = md.replace(/^##\s+(.*)$/gm, '<h2>$1</h2>');
+      md = md.replace(/^#\s+(.*)$/gm, '<h1>$1</h1>');
+      // Horizontal rules
+      md = md.replace(/^---+$/gm, '<hr/>');
+      // Bold
+      md = md.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      // Inline code
+      md = md.replace(/`([^`]+)`/g, '<code>$1</code>');
+      // Links
+      md = md.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1<\/a>');
+      // Lists
+      md = md.replace(/^(\-\s+.*(?:\n\-\s+.*)*)/gm, function(m){
+        const items = m.split(/\n/).map(function(li){ return li.replace(/^\-\s+/, '<li>') + '</li>';}).join('');
+        return '<ul>' + items + '</ul>';
+      });
+      // Paragraphs
+      md = md.replace(/^(?!<h\d|<ul|<pre|<hr|\s*$)(.+)$/gm, '<p>$1</p>');
+      return md;
+    }
+    fetch('/manual/raw', { headers: { 'Accept': 'text/plain' } })
+      .then(function(r){ return r.text(); })
+      .then(function(text){
+        document.getElementById('manualContainer').innerHTML = renderMarkdown(text);
+      })
+      .catch(function(){
+        document.getElementById('manualContainer').innerHTML = '<p class="text-danger">Failed to load manual.</p>';
+      });
+  })();
+</script>
+
+<%- include('../partials/footer') %>
+
+
