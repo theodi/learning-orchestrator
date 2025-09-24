@@ -54,7 +54,7 @@ Use this when selling access to one or more self‑paced courses.
 
 3) Automatic communications (via HubSpot workflows)
 - If you have a HubSpot workflow configured to watch the “Includes self paced courses” property, HubSpot can call OLWO at `/webhooks/deal-send-reminders` with the deal ID on a schedule you choose (e.g., once on creation, and then reminders every N days).
-- OLWO sends the appropriate Welcome/Reminder emails to each learner with instructions for getting into their course.
+- OLWO sends the appropriate Welcome/Reminder emails to each learner with instructions for accessing their course(s). Enrollment is already completed in Moodle.
 - Emails are logged in HubSpot against the deal and the learner’s contact record. From OLWO’s bookings view, use “View details” to see learner status (enrolled/accessed) and email history.
 
 4) No delivery project/calendar for self‑paced
@@ -63,18 +63,17 @@ Use this when selling access to one or more self‑paced courses.
 ---
 
 ## How learner enrollment in Moodle works (self‑paced)
-This is automatic once the deal is set and workflows are in place.
+Enrollment and account provisioning are automatic once the deal is set and workflows are in place.
 
-- If the learner already has a Moodle account with the same email: OLWO enrolls them into the course(s) for the specified duration immediately. The email they receive explains how to access the course.
-- If the learner does not yet have a Moodle account: they receive instructions to create an ODI account on the ODI website, sign in to Moodle, and then complete enrollment by following their verification link.
-- The verification link takes the pattern:
-  - `https://<your-host>/enrollments/verify?deal_id=<HUBSPOT_DEAL_ID>&email=their.email@example.com`
-  - The link checks that the email is a “Learner” on the HubSpot deal before completing enrollment and shows:
-    - Courses included in their booking
-    - Whether they are enrolled
-    - First/last access (if available)
-    - Enrollment end date
-- Tutors or coordinators can also open the same link to verify status for a learner.
+- If the learner already has a Moodle account with the same email: OLWO enrolls them into the course(s) immediately for the specified duration.
+- If the learner does not have a Moodle account: OLWO creates a placeholder Moodle user with OAuth2 auth (username = their email). No password is set/needed.
+- To access Moodle, the learner must: (1) create an ODI website account with the same email (if they don’t already have one), and (2) use “Sign in with ODI Account” on Moodle. This first sign‑in links their ODI identity to the pre‑created Moodle user (“activation”) and they will immediately see their enrolled course(s).
+- A verification page still exists for coordinators and learners to view status, but is not required to complete enrollment.
+- The verification page shows:
+  - Courses included in the booking
+  - Whether the learner is enrolled
+  - First/last access (if available)
+  - Enrollment end date
 
 ---
 
@@ -111,7 +110,7 @@ When those conditions are met, your HubSpot workflow can trigger OLWO to send in
 
 ---
 
-## Quick reference: learner link
-Share with a learner or use as a coordinator/tutor to complete/verify access:
+## Quick reference: learner status link (optional)
+You can share this for visibility of status (enrollment/access) or use it as a coordinator/tutor. It is not required for enrollment:
 
 `https://<your-host>/enrollments/verify?deal_id=<HUBSPOT_DEAL_ID>&email=their.email@example.com`
