@@ -20,7 +20,7 @@ export class AuthController extends BaseController {
   async googleCallback(req, res) {
     try {
       req.session.authMethod = 'google';
-      res.redirect('/auth/profile');
+      res.redirect('/');
     } catch (error) {
       res.redirect('/error');
     }
@@ -31,7 +31,7 @@ export class AuthController extends BaseController {
     try {
       req.session.authMethod = 'django';
       // TODO: Implement processLogin if needed
-      res.redirect('/auth/profile');
+      res.redirect('/');
     } catch (error) {
       res.redirect('/error');
     }

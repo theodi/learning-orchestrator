@@ -8,10 +8,37 @@
 
     <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 16px;">
         <div class="card">
-            <h3>Create Course Booking</h3>
+            <h3>Create Tutored Course Booking</h3>
             <p>Set up a project, tasks, and calendar entries in one go.</p>
-            <p><a class="btn btn-lightgrey" href="/course-bookings/new">Go to form</a></p>
+            <p><a class="btn btn-lightgrey" href="/course-bookings/new">Create tutored booking</a></p>
         </div>
+        <div class="card">
+            <h3>Create Self-Paced Course Booking</h3>
+            <p>Set up a project, tasks, and calendar entries in one go.</p>
+            <p><a class="btn btn-lightgrey" href="/self-paced-bookings/new">Create self-paced booking</a></p>
+        </div>
+    </div>
+    <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 16px;">
+        <div class="card">
+            <h3>Browse Bookings</h3>
+            <p>View course bookings.</p>
+            <p><a class="btn btn-lightgrey" href="/course-bookings">Browse bookings</a></p>
+        </div>
+        <div class="card">
+            <h3>Browse Courses</h3>
+            <p>View courses used for bookings.</p>
+            <p><a class="btn btn-lightgrey" href="/hubspot/courses">Browse courses</a></p>
+        </div>
+        <div class="card">
+            <h3>View moodle enrollments per course</h3>
+            <p>View enrollments for each course in Moodle.</p>
+            <p><a class="btn btn-lightgrey" href="/moodle/courses">View enrollments</a></p>
+        </div>
+    </div>
+    <br/>
+    <h2>Forecast Operations</h2>
+    <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 16px;">
+        
         <div class="card">
             <h3>Create Tasks (Import)</h3>
             <p>Import training tasks directly into Forecast from a file.</p>
@@ -22,25 +49,8 @@
             <p>View existing Forecast projects.</p>
             <p><a class="btn btn-lightgrey" href="/forecast/projects">Browse projects</a></p>
         </div>
-        <div class="card">
-            <h3>Browse Products</h3>
-            <p>View HubSpot products used for bookings.</p>
-            <p><a class="btn btn-lightgrey" href="/hubspot/products">Browse products</a></p>
-        </div>
-        <div class="card">
-            <h3>Browse Moodle Courses</h3>
-            <p>View courses available in Moodle.</p>
-            <p><a class="btn btn-lightgrey" href="/moodle/courses">Browse courses</a></p>
-        </div>
+        
     </div>
-
-    <hr/>
-    <h2>How it works</h2>
-    <ol>
-        <li><strong>Create Course Booking</strong>: generates Forecast project, delivery/admin tasks, and a Google Calendar event.</li>
-        <li><strong>Create Tasks (Import)</strong>: upload tasks for existing Forecast projects.</li>
-        <li><strong>Browse</strong>: explore Products (HubSpot), Projects and Labels (Forecast), and Bookings.</li>
-    </ol>
 </section>
 <% } else { %>
 <!-- Non-authenticated user content -->
