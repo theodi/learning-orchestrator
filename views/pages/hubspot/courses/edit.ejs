@@ -69,12 +69,12 @@
               <div class="form-group">
                 <label for="moodle_course_id" class="col-sm-3 control-label">Moodle Course</label>
                 <div class="col-sm-9">
-                  <select class="form-control" id="moodle_course_id" name="moodle_course_id" style="width:100%">
+                  <select class="form-control" id="moodle_course_id" name="moodle_course_id">
                     <% if (course.moodle_course_id) { %>
                       <option value="<%= course.moodle_course_id %>" selected>Selected course (<%= course.moodle_course_id %>)</option>
                     <% } %>
                   </select>
-                  <small class="text-muted">Search and select from Moodle courses</small>
+                  <small class="text-muted">Select from Moodle courses (alphabetical)</small>
                 </div>
               </div>
               
@@ -157,27 +157,32 @@
       }
     });
 
-    // Moodle courses Select2
-    $('#moodle_course_id').select2({
-      placeholder: 'Search Moodle courses',
-      allowClear: true,
-      ajax: {
+    // Populate Moodle courses (alphabetically by name)
+    (function populateMoodleCourses(){
+      const select = $('#moodle_course_id');
+      const currentValue = String(select.val() || '').trim();
+      $.ajax({
         url: '/moodle/courses',
-        transport: function (params, success, failure) {
-          $.ajax({
-            url: params.url,
-            headers: { 'Accept': 'application/json' }
-          }).then(success).fail(failure);
-        },
-        processResults: function (data) {
-          const rows = (data && (data.data || data)) || [];
-          const results = rows.map(function (c) {
-            return { id: c.id, text: (c.fullname || c.shortname || ('Course ' + c.id)) + ' (#' + c.id + ')' };
-          });
-          return { results: results };
-        }
-      }
-    });
+        headers: { 'Accept': 'application/json' }
+      }).then(function(data){
+        const rows = (data && (data.data || data)) || [];
+        const courses = rows.map(function(c){
+          const name = (c.fullname || c.shortname || ('Course ' + c.id));
+          return { id: String(c.id), name: name };
+        });
+        courses.sort(function(a,b){ return a.name.localeCompare(b.name); });
+        // Rebuild options
+        const opts = [];
+        opts.push('<option value="">Select a Moodle course...</option>');
+        courses.forEach(function(c){
+          const sel = (currentValue && currentValue === c.id) ? ' selected' : '';
+          opts.push('<option value="' + c.id + '"' + sel + '>' + c.name + ' (#' + c.id + ')</option>');
+        });
+        select.html(opts.join(''));
+      }).fail(function(){
+        // leave existing option if fetch fails
+      });
+    })();
   });
 </script>
 
