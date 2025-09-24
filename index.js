@@ -224,6 +224,43 @@ app.use("/webhooks", publicLimiter, webhooksRoutes);
 import manualRoutes from "./routes/manual.js";
 app.use("/manual", ensureAuthenticated, manualRoutes);
 
+// Lightweight background refresh (interval-based)
+import MoodleCacheService from './services/moodleCacheService.js';
+import HubSpotCacheService from './services/hubspotCacheService.js';
+
+const scheduler = {
+  started: false,
+  start() {
+    if (this.started) return;
+    this.started = true;
+    const moodle = new MoodleCacheService();
+    const hubspot = new HubSpotCacheService();
+
+    const moodleIntervalMs = parseInt(process.env.MOODLE_CACHE_INTERVAL_MS || `${15 * 60 * 1000}`, 10);
+    const hubspotIntervalMs = parseInt(process.env.HUBSPOT_CACHE_INTERVAL_MS || `${60 * 60 * 1000}`, 10);
+
+    setInterval(() => {
+      moodle.refreshCoursesBatch({ concurrency: parseInt(process.env.MOODLE_CONCURRENCY || '5', 10) }).catch(() => {});
+    }, moodleIntervalMs);
+
+    // HubSpot membership refresh requires a list of emails; for minimal setup we no-op here.
+    // You can later wire a query of recent emails from Moodle cache and pass to refreshMemberships.
+    setInterval(async () => {
+      try {
+        const MoodleCourseEnrollments = (await import('./models/MoodleCourseEnrollments.js')).default;
+        const docs = await MoodleCourseEnrollments.find({}, { 'enrollments.email': 1 }).limit(1000).lean();
+        const emails = [];
+        for (const d of docs) {
+          for (const u of (d.enrollments || [])) {
+            if (u.email) emails.push(u.email.toLowerCase());
+          }
+        }
+        await hubspot.refreshMemberships(emails, { concurrency: parseInt(process.env.HUBSPOT_CONCURRENCY || '4', 10) });
+      } catch (_) {}
+    }, hubspotIntervalMs);
+  }
+};
+
 //Keep this at the END!
 app.get('*', function(req, res){
   const page = {
@@ -286,6 +323,8 @@ const port = process.env.PORT || 3080;
 const startServer = async () => {
   try {
     await connectDB();
+    // start background schedulers once DB is ready
+    try { scheduler.start(); } catch (_) {}
     app.listen(port, () => console.log('App listening on port ' + port));
   } catch (error) {
     console.error('Failed to start server:', error);

@@ -13,6 +13,29 @@ export class HubSpotService {
     };
   }
 
+  // Utility: sleep ms
+  sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+  // Utility: Axios call with 429 backoff handling
+  async requestWithRetry(fn, { maxRetries = 5, baseDelayMs = 250 } = {}) {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await fn();
+      } catch (error) {
+        const status = error?.response?.status;
+        if (status === 429 && attempt < maxRetries) {
+          const retryAfter = parseFloat(error?.response?.headers?.['retry-after'] || '0');
+          const backoff = retryAfter > 0 ? Math.ceil(retryAfter * 1000) : baseDelayMs * Math.pow(2, attempt);
+          await this.sleep(backoff);
+          attempt += 1;
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
   /**
  * Fetch all HubSpot products
  * @param {string|null} productType - Optional product type filter (e.g., "Learning Course")
@@ -393,6 +416,154 @@ export class HubSpotService {
       
       return [];
     }
+  }
+
+  /**
+   * Find a contact by exact email and return membership-related properties.
+   * Also checks associated company for active membership overrides.
+   */
+  async getContactMembershipByEmail(email) {
+    if (!email) return null;
+    try {
+      // 1) Exact email search with needed properties
+      const searchUrl = `${this.baseUrl}/crm/v3/objects/contacts/search`;
+      const payload = {
+        filterGroups: [
+          { filters: [{ propertyName: 'email', operator: 'EQ', value: String(email).toLowerCase() }] }
+        ],
+        properties: [
+          'email',
+          'firstname',
+          'lastname',
+          'odi_membership__active_or_lapsed__',
+          'odi_member_partner_type'
+        ],
+        limit: 1
+      };
+      const cRes = await this.requestWithRetry(() => axios.post(searchUrl, payload, { headers: this.headers }));
+      const contact = (cRes?.data?.results || [])[0];
+      if (!contact) return null;
+
+      const out = {
+        contact_id: contact.id,
+        email: contact.properties?.email || String(email).toLowerCase(),
+        contact_membership_status: contact.properties?.odi_membership__active_or_lapsed__ || null,
+        contact_membership_type: contact.properties?.odi_member_partner_type || null,
+        company_membership_active: false,
+        membership_status: contact.properties?.odi_membership__active_or_lapsed__ || null,
+        membership_type: contact.properties?.odi_member_partner_type || null
+      };
+
+      // 2) Try associated company → if company membership Active, override
+      try {
+        const assocUrl = `${this.baseUrl}/crm/v3/objects/contacts/${contact.id}/associations/companies`;
+        const assocRes = await this.requestWithRetry(() => axios.get(assocUrl, { headers: this.headers }));
+        const companyId = assocRes?.data?.results?.[0]?.id;
+        if (companyId) {
+          const compUrl = `${this.baseUrl}/crm/v3/objects/companies/${companyId}`;
+          const compRes = await this.requestWithRetry(() => axios.get(compUrl, {
+            headers: this.headers,
+            params: { properties: 'name,odi_membership_status__active_or_lapsed__,member_partner_type_org_' }
+          }));
+          const p = compRes?.data?.properties || {};
+          if ((p.odi_membership_status__active_or_lapsed__ || '').toLowerCase() === 'active') {
+            out.company_membership_active = true;
+            out.membership_status = 'Active';
+            out.membership_type = p.member_partner_type_org_ || out.membership_type || null;
+          }
+        }
+      } catch (_) {
+        // ignore association/company errors; fall back to contact-level values
+      }
+
+      return out;
+    } catch (error) {
+      console.error('Error getContactMembershipByEmail:', error.response?.data || error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Batch: fetch contacts by emails with membership properties.
+   * Uses multiple OR filterGroups per request (up to 25 emails per request) to reduce API calls.
+   * Returns a map email -> { contact_id, email, contact_membership_status, contact_membership_type }
+   */
+  async getContactsMembershipByEmails(emails = []) {
+    const normalized = Array.from(new Set((emails || []).map(e => String(e || '').toLowerCase()).filter(Boolean)));
+    const byEmail = new Map();
+    const chunkSize = 100;
+    for (let i = 0; i < normalized.length; i += chunkSize) {
+      const chunk = normalized.slice(i, i + chunkSize);
+      const url = `${this.baseUrl}/crm/v3/objects/contacts/batch/read`;
+      const payload = {
+        properties: ['email','firstname','lastname','odi_membership__active_or_lapsed__','odi_member_partner_type'],
+        idProperty: 'email',
+        inputs: chunk.map(e => ({ id: e }))
+      };
+      try {
+        const res = await this.requestWithRetry(() => axios.post(url, payload, { headers: this.headers }));
+        const results = res?.data?.results || [];
+        results.forEach(c => {
+          const em = String(c.properties?.email || '').toLowerCase();
+          if (!em) return;
+          byEmail.set(em, {
+            contact_id: c.id,
+            email: em,
+            contact_membership_status: c.properties?.odi_membership__active_or_lapsed__ || null,
+            contact_membership_type: c.properties?.odi_member_partner_type || null
+          });
+        });
+      } catch (e) {
+        // Continue with remaining chunks
+      }
+    }
+    return byEmail;
+  }
+
+  /**
+   * Batch: read associated companies for a list of contact IDs.
+   * Returns a map contactId -> first companyId (string) or null
+   */
+  async getAssociatedCompaniesForContacts(contactIds = []) {
+    const ids = Array.from(new Set((contactIds || []).map(String).filter(Boolean)));
+    const out = new Map();
+    const chunkSize = 100;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const url = `${this.baseUrl}/crm/v4/associations/contacts/companies/batch/read`;
+      const payload = { inputs: chunk.map(id => ({ id })) };
+      try {
+        const res = await this.requestWithRetry(() => axios.post(url, payload, { headers: this.headers }));
+        const results = res?.data?.results || [];
+        results.forEach(r => {
+          const cid = (r.to || [])[0]?.id || null;
+          out.set(r.from?.id, cid || null);
+        });
+      } catch (e) {
+        // skip on error
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Batch: read companies by IDs with membership properties. Returns map id -> properties
+   */
+  async getCompaniesByIdsBatch(companyIds = []) {
+    const ids = Array.from(new Set((companyIds || []).map(String).filter(Boolean)));
+    const out = new Map();
+    const chunkSize = 100;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const url = `${this.baseUrl}/crm/v3/objects/companies/batch/read`;
+      const payload = { properties: ['name','odi_membership_status__active_or_lapsed__','member_partner_type_org_'], inputs: chunk.map(id => ({ id })) };
+      try {
+        const res = await this.requestWithRetry(() => axios.post(url, payload, { headers: this.headers }));
+        const results = res?.data?.results || [];
+        results.forEach(c => out.set(c.id, c.properties || {}));
+      } catch (e) {}
+    }
+    return out;
   }
 
   /**
