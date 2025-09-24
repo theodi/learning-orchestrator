@@ -173,7 +173,7 @@ app.use((req, res, next) => {
 
 app.get('/', function(req, res) {
   const page = {
-    title: "ODI Forecast Helper",
+    title: "Orchestrator",
     link: "/"
   };
   res.locals.page = page;
