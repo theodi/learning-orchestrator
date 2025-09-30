@@ -730,6 +730,38 @@ export class HubSpotService {
   }
 
   /**
+   * Fetch all contact IDs associated to a deal (no label filter)
+   */
+  async fetchDealContactIds(dealId) {
+    try {
+      const url = `${this.baseUrl}/crm/v3/objects/deals/${dealId}/associations/contacts`;
+      const res = await axios.get(url, { headers: this.headers });
+      const ids = (res.data?.results || []).map(r => r.id).filter(Boolean);
+      return Array.from(new Set(ids.map(String)));
+    } catch (error) {
+      console.error('Error fetching deal contact IDs:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Apply an association label to all contacts associated with a deal
+   */
+  async labelAllDealContacts(dealId, label = 'Learner') {
+    const ids = await this.fetchDealContactIds(dealId);
+    const results = [];
+    for (const contactId of ids) {
+      try {
+        const ok = await this.setAssociationLabels('deals', String(dealId), 'contacts', String(contactId), [label]);
+        results.push({ contactId, labeled: Boolean(ok) });
+      } catch (e) {
+        results.push({ contactId, labeled: false, error: e?.message || 'label failed' });
+      }
+    }
+    return { total: ids.length, updated: results.filter(r => r.labeled).length, results };
+  }
+
+  /**
    * Create a HubSpot contact
    */
   async createContact({ firstName, lastName, email, phone }) {

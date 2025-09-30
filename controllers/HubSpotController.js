@@ -740,6 +740,48 @@ export class HubSpotController extends BaseController {
     }
   }
 
+  // Authenticated webhook: label all deal contacts as Learner and set self-paced flag
+  async labelDealLearnersAndFlagSelfPaced(req, res) {
+    try {
+      const apiKey = req.headers['x-api-key'] || req.query.api_key;
+      if (!validateApiKey(apiKey, process.env.WEBHOOK_API_KEY)) {
+        return this.sendError(res, 'Forbidden: Invalid API key', HTTP_STATUS.FORBIDDEN);
+      }
+
+      const { deal_id, label } = req.body || req.query || {};
+      if (!deal_id) {
+        return this.sendError(res, 'Missing deal_id', HTTP_STATUS.BAD_REQUEST);
+      }
+
+      const appliedLabel = String(label || 'Learner');
+
+      // 1) Label all associated contacts
+      const labelResult = await this.hubspotService.labelAllDealContacts(deal_id, appliedLabel);
+
+      // 2) Set the self-paced flag on the deal
+      let updateResult = null;
+      try {
+        updateResult = await this.hubspotService.updateDeal(String(deal_id), { includes_self_paced_courses: true });
+      } catch (e) {
+        // include error context but don't fail overall if labeling worked
+      }
+
+      return this.sendSuccess(
+        res,
+        {
+          deal_id: String(deal_id),
+          label: appliedLabel,
+          contacts_processed: labelResult.total,
+          contacts_labeled: labelResult.updated,
+          deal_updated: Boolean(updateResult && updateResult.id),
+        },
+        'Contacts labeled and self-paced flag set'
+      );
+    } catch (error) {
+      return this.sendError(res, error.message || 'Failed to label learners and flag deal');
+    }
+  }
+
   // Get products
   async getProducts(req, res) {
     try {
