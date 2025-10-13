@@ -9,6 +9,7 @@ import { EnrollmentService } from '../services/enrollmentService.js';
 import { MoodleService } from '../services/moodleService.js';
 import { validateApiKey, validateProjectId } from '../utils/validation.js';
 import { HTTP_STATUS, HUBSPOT_CONFIG } from '../config/constants.js';
+import { IGNORED_PIPELINE_LABELS } from '../config/pipelines.js';
 
 export class HubSpotController extends BaseController {
   constructor() {
@@ -37,6 +38,87 @@ export class HubSpotController extends BaseController {
     return this.renderPage(req, res, 'pages/hubspot/browse', {
       title: 'Browse HubSpot Data'
     });
+  }
+
+  // Get deals (by pipeline) with content negotiation
+  async getDeals(req, res) {
+    try {
+      const acceptHeader = req.get('accept') || '';
+      const rawPipes = req.query.pipeline || req.query.pipelines || process.env.HUBSPOT_DEFAULT_PIPELINE_ID;
+      const pipelineIds = Array.isArray(rawPipes)
+        ? rawPipes.map(String)
+        : String(rawPipes || '').split(',').map(s => s.trim()).filter(Boolean);
+      const debug = String(req.query.debug || '').toLowerCase() === 'true';
+
+      if (acceptHeader.includes('application/json')) {
+        // Fetch deals and return JSON (multi-pipeline support)
+        let deals = [];
+        if (pipelineIds.length > 1) {
+          deals = await this.hubspotService.fetchDealsFromPipelines(pipelineIds);
+        } else {
+          deals = await this.hubspotService.fetchDealsFromPipeline(pipelineIds[0]);
+        }
+        // Filter: remove closed (won/lost/100%) older than 24 months to reduce data size
+        const twentyFourMonthsAgo = new Date();
+        twentyFourMonthsAgo.setMonth(twentyFourMonthsAgo.getMonth() - 24);
+        const cutoffTs = twentyFourMonthsAgo.getTime();
+        const filteredDeals = deals.filter(d => {
+          const p = d?.properties || {};
+          const cd = p.closedate ? new Date(p.closedate) : null;
+          const prob = Number(p.hs_deal_stage_probability);
+          const isHundred = Number.isFinite(prob) && prob >= 1;
+          const stageText = String(p.dealstage || '').toLowerCase();
+          const isClosed = isHundred || stageText.includes('closed') || stageText.includes('won') || stageText.includes('lost');
+          if (!isClosed) return true;
+          if (!cd || !Number.isFinite(cd.getTime())) return true;
+          return cd.getTime() >= cutoffTs;
+        });
+        // Also fetch pipelines to map stage labels client-side if needed
+        let pipelines = [];
+        try {
+          pipelines = await this.hubspotService.fetchPipelines();
+          if (Array.isArray(pipelines) && IGNORED_PIPELINE_LABELS?.length) {
+            pipelines = pipelines.filter(p => !IGNORED_PIPELINE_LABELS.includes(p.label));
+          }
+        } catch (_) {}
+        // Fetch owners to resolve names client-side
+        let owners = [];
+        try {
+          owners = await this.hubspotService.fetchOwners();
+        } catch (_) {}
+        if (debug) {
+          if (Array.isArray(filteredDeals) && filteredDeals.length > 0) {
+            const sample = filteredDeals[0];
+          }
+        }
+        return this.sendSuccess(res, { deals: filteredDeals, pipelines, owners, currentPipeline: pipelineIds[0] || null, selectedPipelines: pipelineIds });
+      }
+
+      // HTML page render with pipelines for selector
+      let pipelines = [];
+      try {
+        pipelines = await this.hubspotService.fetchPipelines();
+        if (Array.isArray(pipelines) && IGNORED_PIPELINE_LABELS?.length) {
+          pipelines = pipelines.filter(p => !IGNORED_PIPELINE_LABELS.includes(p.label));
+        }
+      } catch (e) {
+        pipelines = [];
+      }
+      const envDefault = process.env.HUBSPOT_DEFAULT_PIPELINE_ID || '';
+      const preferred = pipelines.find(p => (p.label || '').toLowerCase() === 'learning and consultancy');
+      const currentPipeline = pipelineIds[0] || preferred?.id || envDefault || (pipelines[0]?.id || '');
+
+      if (debug) {
+      }
+      return this.renderPage(req, res, 'pages/hubspot/deals/index', {
+        title: 'HubSpot Deals',
+        pipelines,
+        currentPipeline
+      });
+    } catch (error) {
+      console.error('[GET /hubspot/deals] error:', error?.response?.data || error?.message || error);
+      return this.sendError(res, 'Failed to fetch deals');
+    }
   }
 
   // Search companies
@@ -181,6 +263,46 @@ export class HubSpotController extends BaseController {
       return this.sendSuccess(res, history, 'Email history');
     } catch (error) {
       return this.sendError(res, error.message || 'Failed to fetch email history');
+    }
+  }
+
+  // Update deal fields (stage, closedate)
+  async updateDealFields(req, res) {
+    try {
+      const { id } = req.params;
+      const { dealstage, closedate } = req.body || {};
+      const payload = {};
+      if (dealstage) payload.dealstage = dealstage;
+      if (closedate) payload.closedate = closedate;
+      if (Object.keys(payload).length === 0) return this.sendError(res, 'No fields to update', HTTP_STATUS.BAD_REQUEST);
+      const updated = await this.hubspotService.updateDeal(id, payload);
+      return this.sendSuccess(res, updated, 'Deal updated');
+    } catch (error) {
+      return this.sendError(res, error?.response?.data || error?.message || 'Failed to update deal');
+    }
+  }
+
+  // Add a note to a deal
+  async addDealNote(req, res) {
+    try {
+      const { id } = req.params;
+      const { bodyHtml, subject } = req.body || {};
+      if (!bodyHtml) return this.sendError(res, 'Missing bodyHtml', HTTP_STATUS.BAD_REQUEST);
+      const creatorName = req.user ? (req.user.displayName || req.user.name || req.user.username || '') : '';
+      const creatorEmail = req.user ? (req.user.email || (req.user.emails && req.user.emails[0] && req.user.emails[0].value) || '') : '';
+      // Create note and associate to deal with Creator header
+      const result = await this.hubspotService.logNoteToDealWithCreator({
+        dealId: String(id),
+        creatorName,
+        creatorEmail,
+        subject: subject || 'Note',
+        bodyHtml: bodyHtml,
+        createdAt: Date.now(),
+        contactId: null
+      });
+      return this.sendSuccess(res, result, 'Note added');
+    } catch (error) {
+      return this.sendError(res, error?.response?.data || error?.message || 'Failed to add note');
     }
   }
 
@@ -535,7 +657,6 @@ export class HubSpotController extends BaseController {
       let dealResult = null;
       try {
         dealResult = await this.createSelfPacedHubSpotDeal(payload);
-        console.log('HubSpot deal created for self-paced course:', dealResult);
       } catch (error) {
         console.error('Failed to create HubSpot deal for self-paced course:', error.message);
         return this.renderPage(req, res, 'pages/hubspot/error', {
@@ -582,13 +703,11 @@ export class HubSpotController extends BaseController {
       if (validation) return validation;
 
       const payload = { ...req.body };
-      console.log('Form submission:', payload);
 
       // Create HubSpot deal
       let dealResult = null;
       try {
         dealResult = await this.createHubSpotDeal(payload);
-        console.log('HubSpot deal created:', dealResult);
       } catch (error) {
         console.error('Failed to create HubSpot deal:', error.message);
         return this.renderPage(req, res, 'pages/hubspot/error', {
@@ -705,7 +824,6 @@ export class HubSpotController extends BaseController {
 
       // Fetch line items (to get moodle_course_id)
       const lineItems = await this.hubspotService.fetchDealLineItemsWithProducts(deal_id);
-      console.log('lineItems', lineItems);
       const courseEntries = lineItems
         .map(li => ({ course_id: parseInt(li.moodle_course_id), term_months: Number(li.term_months) }))
         .filter(e => Number.isFinite(e.course_id));
@@ -719,7 +837,6 @@ export class HubSpotController extends BaseController {
         for (const entry of courseEntries) {
           const cid = entry.course_id;
           const termMonths = Number.isFinite(entry.term_months) && entry.term_months > 0 ? entry.term_months : 12;
-          console.log('termMonths', termMonths);
           try {
             const status = await this.enrollmentService.getUserCourseStatus(cid, email, termMonths);
             results.push({
@@ -1080,9 +1197,7 @@ Completed By: ${formData.completed_by_name} (${formData.completed_by_email})`.tr
       const owner = await this.hubspotService.findUserByEmail(formData.completed_by_email);
       if (owner) {
         ownerId = owner.id;
-        console.log(`Found deal owner: ${owner.firstName} ${owner.lastName} (${owner.id})`);
       } else {
-        console.log(`No HubSpot user found for email: ${formData.completed_by_email}`);
       }
     } catch (error) {
       console.error('Failed to find deal owner:', error.message);
@@ -1115,7 +1230,6 @@ Completed By: ${formData.completed_by_name} (${formData.completed_by_email})`.tr
 
     // Use product ID directly from form
     if (formData.course_id && formData.course_id.trim() !== '') {
-      console.log(`Using product ID from form: ${formData.course_id}`);
       dealData.productId = formData.course_id; // This is now the product ID
     }
 
@@ -1197,9 +1311,7 @@ Client Email: ${formData.client_requestor_email_sp}`.trim();
       const owner = await this.hubspotService.findUserByEmail(formData.completed_by_email);
       if (owner) {
         ownerId = owner.id;
-        console.log(`Found deal owner for self-paced: ${owner.firstName} ${owner.lastName} (${owner.id})`);
       } else {
-        console.log(`No HubSpot user found for email: ${formData.completed_by_email}`);
       }
     } catch (error) {
       console.error('Failed to find deal owner for self-paced:', error.message);
@@ -1235,7 +1347,6 @@ Client Email: ${formData.client_requestor_email_sp}`.trim();
 
     // Use product ID directly from form
     if (formData.course_id_sp && formData.course_id_sp.trim() !== '') {
-      console.log(`Using product ID from self-paced form: ${formData.course_id_sp}`);
       dealData.productId = formData.course_id_sp; // This is now the product ID
     }
 
