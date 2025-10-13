@@ -13,7 +13,7 @@
       <div class="row mb-3">
         <div class="col-md-4">
           <label for="pipelineSelect" class="form-label">Pipeline:</label>
-          <select id="pipelineSelect" class="form-control" onchange="changePipeline()">
+          <select id="pipelineSelect" class="form-control">
             <% pipelines.forEach(pipeline => { %>
               <option value="<%= pipeline.id %>" <%= pipeline.id === currentPipeline ? 'selected' : '' %>>
                 <%= pipeline.label %>
@@ -75,67 +75,6 @@
   </div>
 </section>
 
-<script>
-$(document).ready(function() {
-  // Initialize DataTable
-  $('#bookingsTable').DataTable({
-    order: [[4, 'desc']], // Sort by Date descending (newest first)
-    pageLength: 25,
-    responsive: true,
-    columnDefs: [
-      { targets: [0], width: '150px' }, // Deal Name
-      { targets: [1], width: '150px' }, // Course
-      { targets: [2], width: '90px', type: 'date' }, // Date
-      { targets: [3], width: '90px', type: 'num' },  // Amount
-      { targets: [4], width: '90px', type: 'date' }, // Created
-      { targets: [5, 6, 7], width: '100px' }, // Integration columns
-      { targets: [8], width: '160px' } // Actions column
-    ],
-    language: {
-      search: "Search bookings:",
-      lengthMenu: "Show _MENU_ bookings per page",
-      info: "Showing _START_ to _END_ of _TOTAL_ bookings"
-    }
-  });
-
-  // Style integration links as buttons with icons
-  function styleIntegrationLinks() {
-    $('#bookingsTable tbody tr').each(function() {
-      const cells = $(this).find('td');
-      const mappings = [
-        { index: 5, icon: '/lib/icons/hubspot.ico' },
-        { index: 6, icon: '/lib/icons/forecast.png' },
-        { index: 7, icon: '/lib/icons/calendar.svg' }
-      ];
-
-      mappings.forEach(m => {
-        const cell = $(cells[m.index]);
-        const link = cell.find('a');
-        if (link.length) {
-          // Apply button styles
-          link.addClass('btn btn-sm btn-outline-primary');
-          link.attr('target', '_blank');
-          // Set label and prepend icon if available
-          link.text('');
-          if (m.icon) {
-            link.prepend(`<img src="${m.icon}" alt="" style="height:16px;width:16px;vertical-align:middle;margin-right:6px;">`);
-          }
-        }
-      });
-    });
-  }
-
-  // Run once on load and on every draw (pagination/sorting/search)
-  styleIntegrationLinks();
-  $('#bookingsTable').on('draw.dt', styleIntegrationLinks);
-});
-
-function changePipeline() {
-  const pipelineId = document.getElementById('pipelineSelect').value;
-  if (pipelineId) {
-    window.location.href = `/course-bookings?pipeline=${encodeURIComponent(pipelineId)}`;
-  }
-}
-</script>
+<script src="/js/course-bookings.js"></script>
 
 <%- include('../../partials/footer') %>
