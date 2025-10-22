@@ -1,0 +1,1128 @@
+<%- include('../../../partials/header') %>
+<section class="content-block light-grey">
+  <div class="container">
+    <div class="jumbotron">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-primary"><span class="fa fa-briefcase"></span> Deals</h1>
+      </div>
+
+      <!-- Total Summary -->
+      <div class="row mb-3">
+        <div class="col-12">
+          <div id="totalBox" class="p-2 dark-blue text-white" style="border-radius:6px;">
+            Total amount (visible): <strong id="totalAmount" class="text-white">£0</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reset Filters Button -->
+      <div class="row mb-3">
+        <div class="col-12">
+          <button type="button" id="resetFiltersBtn" class="btn btn-secondary">Reset All Filters</button>
+        </div>
+      </div>
+
+      <!-- Pipeline Selection + Metrics/Filters -->
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <div id="pipelineFilters" class="d-flex flex-column" style="height: 100%; border:2px solid var(--color-dark-blue); border-radius:6px; padding:8px;">
+            <div class="mb-3">
+              <strong>Pipelines:</strong>
+              <% (pipelines || []).forEach(p => { %>
+                <label style="margin-bottom:6px; display:block;">
+                  <input type="radio" name="pipelineRadio" class="pipeline-filter" data-id="<%= p.id %>" value="<%= p.id %>" <%= (p.id === currentPipeline) ? 'checked' : '' %> />
+                  <%= p.label %>
+                </label>
+              <% }) %>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div id="ownerFilters" class="d-flex flex-column" style="height: 100%; border:2px solid var(--color-dark-blue); border-radius:6px; padding:8px;">
+            <div class="mb-3">
+              <strong>Owners:</strong>
+              <table class="table table-condensed table-bordered" id="ownerMetricsTable" style="margin-top: 8px;">
+                <thead>
+                  <tr>
+                    <th style="width: 50%;">Owner</th>
+                    <th style="width: 25%;">Count</th>
+                    <th style="width: 25%;">Value</th>
+                  </tr>
+                </thead>
+                <tbody id="ownerMetrics">
+                  <!-- Owner metrics will be populated here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <div id="closeMonthFilters" class="d-flex flex-column" style="height: 100%; border:2px solid var(--color-dark-blue); border-radius:6px; padding:8px;">
+            <div class="mb-2">
+              <label>
+                <input type="checkbox" id="filterOverdue">
+                <strong>Overdue closes</strong> (<span id="overdueCount">0</span>)
+              </label>
+              <small class="text-muted d-block">Deals with close date in the past (excluding closed/won/lost/cancelled)</small>
+            </div>
+            <div class="mt-3">
+              <strong>Close Month:</strong>
+              <table class="table table-condensed table-bordered" id="closeMonthMetricsTable" style="margin-top: 8px;">
+                <thead>
+                  <tr>
+                    <th style="width: 50%;">Month</th>
+                    <th style="width: 25%;">Count</th>
+                    <th style="width: 25%;">Value</th>
+                  </tr>
+                </thead>
+                <tbody id="closeMonthMetrics">
+                  <!-- Close month metrics will be populated here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div id="stageFilters" class="d-flex flex-column" style="height: 100%; border:2px solid var(--color-dark-blue); border-radius:6px; padding:8px;">
+            <div class="mb-3">
+              <strong>Deal Stages:</strong>
+              <table class="table table-condensed table-bordered" id="stageMetricsTable" style="margin-top: 8px;">
+                <thead>
+                  <tr>
+                    <th style="width: 40%;">Stage</th>
+                    <th style="width: 20%;">Count</th>
+                    <th style="width: 40%;">Value</th>
+                  </tr>
+                </thead>
+                <tbody id="stageMetrics">
+                  <!-- Stage metrics will be populated here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <br/>
+
+      <!-- Deals Table -->
+      <div class="table-responsive">
+        <table id="dealsTable" class="table table-striped table-hover">
+          <thead>
+            <tr>
+              <th>Deal Name</th>
+              <th>Owner</th>
+              <th>Stage</th>
+              <th>Close Date</th>
+              <th>Amount</th>
+              <th>HubSpot</th>
+            </tr>
+          </thead>
+          <tbody>
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- Deal Modal -->
+      <div class="modal" id="dealModal" tabindex="-1" aria-hidden="true" style="display:none;">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Deal</h5>
+              <button type="button" class="btn-close" id="dealModalCloseBtn" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <div id="dealLoading" style="padding: 16px;">Loading…</div>
+              <div id="dealContent" style="display:none;">
+              <div id="dealSaveStatus" class="alert alert-success" role="alert" style="display:none; margin-bottom:12px;">Saved.</div>
+              <form id="dealForm">
+                <input type="hidden" id="dealId" />
+                <div class="mb-3">
+                  <label class="form-label">Stage</label>
+                  <select id="dealStage" class="form-control"></select>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Close Date</label>
+                  <input type="date" id="dealCloseDate" class="form-control" />
+                </div>
+              </form>
+              <hr/>
+              <h6>Notes & Emails</h6>
+              <div id="dealHistory" style="max-height:300px; overflow-y:auto;"></div>
+              <hr/>
+              <div class="mb-3">
+                <label class="form-label">Add Note (HTML)</label>
+                <textarea id="dealNoteHtml" class="form-control" rows="4"></textarea>
+              </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" id="saveDealBtn" class="btn btn-primary">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+  const $table = $('#dealsTable');
+  const $tbody = $table.find('tbody');
+  const $stageMetrics = $('#stageMetrics');
+  const $overdueCount = $('#overdueCount');
+  const $filterOverdue = $('#filterOverdue');
+  let dealsDT = null;
+
+  function formatDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isFinite(d.getTime())) {
+      return d.toISOString().split('T')[0];
+    }
+    const n = Number(iso);
+    if (Number.isFinite(n)) {
+      const d2 = new Date(n);
+      return d2.toISOString().split('T')[0];
+    }
+    return String(iso);
+  }
+
+  function stageLabel(pipelines, pipelineId, stageId) {
+    const p = (pipelines || []).find(x => String(x.id) === String(pipelineId));
+    if (!p) return stageId || '';
+    const s = (p.stages || []).find(x => String(x.id) === String(stageId));
+    return (s && s.label) || stageId || '';
+  }
+
+  function isClosedWon(prob, stageText) {
+    const p = Number(prob);
+    const s = String(stageText || '').toLowerCase();
+    return (Number.isFinite(p) && p >= 1) || s.includes('closed won') || s.includes('won');
+  }
+
+  function isClosed(prob, stageText) {
+    const p = Number(prob);
+    const s = String(stageText || '').toLowerCase();
+    const isHundred = Number.isFinite(p) && p >= 1; // 100%
+    return isHundred || s.includes('closed') || s.includes('won') || s.includes('lost') || s.includes('cancelled');
+  }
+
+  function isOverdueClose(closedate, isClosed) {
+    if (isClosed) return false;
+    if (!closedate) return false;
+    const d = new Date(closedate);
+    if (!Number.isFinite(d.getTime())) {
+      const n = Number(closedate);
+      if (Number.isFinite(n)) {
+        return Date.now() > n;
+      }
+      return false;
+    }
+    return Date.now() > d.getTime();
+  }
+
+  function renderStageMetrics(pipelines, pipelineId, deals) {
+    const p = (pipelines || []).find(x => String(x.id) === String(pipelineId));
+    const stages = (p && p.stages) ? p.stages : [];
+
+    const counts = new Map();
+    const values = new Map();
+    stages.forEach(s => {
+      counts.set(String(s.id), 0);
+      values.set(String(s.id), 0);
+    });
+    
+    // Track deals that don't match any stage
+    let unmatchedDeals = 0;
+    let unmatchedValue = 0;
+    
+    deals.forEach(d => {
+      const sid = String(d?.properties?.dealstage || '');
+      if (counts.has(sid)) {
+        counts.set(sid, counts.get(sid) + 1);
+        const amount = parseCurrency(d?.properties?.amount || 0);
+        values.set(sid, values.get(sid) + amount);
+      } else {
+        // Deal has a stage ID that doesn't exist in current pipeline
+        unmatchedDeals++;
+        const amount = parseCurrency(d?.properties?.amount || 0);
+        unmatchedValue += amount;
+      }
+    });
+
+    const html = stages.map(s => {
+      const sid = String(s.id);
+      const count = counts.get(sid) || 0;
+      const value = values.get(sid) || 0;
+      const formattedValue = value > 0 ? `£${value.toLocaleString()}` : '£0';
+      return `
+        <tr>
+          <td>
+            <label style="margin: 0;">
+              <input type="checkbox" class="stage-filter" data-stage-id="${sid}" checked>
+              ${s.label}
+            </label>
+          </td>
+          <td><span class="stage-count" data-stage-id="${sid}">${count}</span></td>
+          <td><span class="stage-value" data-stage-id="${sid}">${formattedValue}</span></td>
+        </tr>`;
+    }).join('');
+    
+    // Add "Unknown Stage" row if there are deals with unmatched stage IDs
+    if (unmatchedDeals > 0) {
+      const unmatchedFormattedValue = unmatchedValue > 0 ? `£${unmatchedValue.toLocaleString()}` : '£0';
+      html += `
+        <tr>
+          <td>
+            <label style="margin: 0;">
+              <input type="checkbox" class="stage-filter" data-stage-id="unknown-stage" checked>
+              <em>Unknown Stage</em>
+            </label>
+          </td>
+          <td><span class="stage-count" data-stage-id="unknown-stage">${unmatchedDeals}</span></td>
+          <td><span class="stage-value" data-stage-id="unknown-stage">${unmatchedFormattedValue}</span></td>
+        </tr>`;
+    }
+    
+    $stageMetrics.html(html);
+    
+  }
+
+  function buildStageOptions(pipelines, pipelineId, selectedId) {
+    const p = (pipelines || []).find(x => String(x.id) === String(pipelineId));
+    const stages = (p && p.stages) ? p.stages : [];
+    return stages.map(s => `<option value="${s.id}" ${String(s.id)===String(selectedId)?'selected':''}>${s.label}</option>`).join('');
+  }
+
+  function updateStageCounts(pipelines, pipelineId, filteredDeals) {
+    const p = (pipelines || []).find(x => String(x.id) === String(pipelineId));
+    const stages = (p && p.stages) ? p.stages : [];
+
+    // Update counts for known stages
+    stages.forEach(s => {
+      const sid = String(s.id);
+      let count = 0;
+      let value = 0;
+      for (const d of filteredDeals) {
+        const dp = d.properties || {};
+        if (String(dp.dealstage) === sid) {
+          count += 1;
+          value += parseCurrency(dp.amount || 0);
+        }
+      }
+      const countEl = $stageMetrics.find(`.stage-count[data-stage-id="${sid}"]`);
+      const valueEl = $stageMetrics.find(`.stage-value[data-stage-id="${sid}"]`);
+      if (countEl && countEl.length) countEl.text(String(count));
+      if (valueEl && valueEl.length) {
+        const formattedValue = value > 0 ? `£${value.toLocaleString()}` : '£0';
+        valueEl.text(formattedValue);
+      }
+    });
+
+    // Update count for "Unknown Stage" row if it exists
+    const unknownStageId = 'unknown-stage';
+    let unknownCount = 0;
+    let unknownValue = 0;
+    for (const d of filteredDeals) {
+      const dp = d.properties || {};
+      const dealStageId = String(dp.dealstage || '');
+      
+      // Check if this deal has an unknown stage (not in current pipeline stages)
+      const stageExists = stages.some(s => String(s.id) === dealStageId);
+      if (!stageExists) {
+        unknownCount += 1;
+        unknownValue += parseCurrency(dp.amount || 0);
+      }
+    }
+    
+    const unknownCountEl = $stageMetrics.find(`.stage-count[data-stage-id="${unknownStageId}"]`);
+    const unknownValueEl = $stageMetrics.find(`.stage-value[data-stage-id="${unknownStageId}"]`);
+    if (unknownCountEl && unknownCountEl.length) unknownCountEl.text(String(unknownCount));
+    if (unknownValueEl && unknownValueEl.length) {
+      const formattedValue = unknownValue > 0 ? `£${unknownValue.toLocaleString()}` : '£0';
+      unknownValueEl.text(formattedValue);
+    }
+  }
+
+  function renderCloseMonthMetrics(deals) {
+    const counts = new Map();
+    const values = new Map();
+    
+    // Get current date for comparison
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // getMonth() is 0-based
+    const currentMonthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+    
+    // Calculate 6 months forward
+    const sixMonthsForward = new Date(now);
+    sixMonthsForward.setMonth(now.getMonth() + 6);
+    const sixMonthsYear = sixMonthsForward.getFullYear();
+    const sixMonthsMonth = sixMonthsForward.getMonth() + 1;
+    const sixMonthsKey = `${sixMonthsYear}-${String(sixMonthsMonth).padStart(2, '0')}`;
+    
+    // Count deals per close month
+    deals.forEach(d => {
+      const dp = d.properties || {};
+      const closeDate = dp.closedate;
+      if (closeDate) {
+        const date = new Date(closeDate);
+        if (Number.isFinite(date.getTime())) {
+          const monthKey = date.toISOString().slice(0, 7); // YYYY-MM format
+          counts.set(monthKey, (counts.get(monthKey) || 0) + 1);
+          const amount = parseCurrency(dp.amount || 0);
+          values.set(monthKey, (values.get(monthKey) || 0) + amount);
+        }
+      }
+    });
+
+    // Group months into categories
+    let pastCount = 0, pastValue = 0;
+    const thisMonthCount = counts.get(currentMonthKey) || 0;
+    const thisMonthValue = values.get(currentMonthKey) || 0;
+    let futureCount = 0, futureValue = 0;
+    const specificMonths = [];
+    
+    // Process all months and categorize them
+    for (const [monthKey, count] of counts.entries()) {
+      const value = values.get(monthKey) || 0;
+      
+      if (monthKey < currentMonthKey) {
+        // Past month
+        pastCount += count;
+        pastValue += value;
+      } else if (monthKey === currentMonthKey) {
+        // This month - already counted above
+        continue;
+      } else if (monthKey <= sixMonthsKey) {
+        // Specific future month (within 6 months)
+        specificMonths.push({ monthKey, count, value });
+      } else {
+        // Future month (beyond 6 months)
+        futureCount += count;
+        futureValue += value;
+      }
+    }
+    
+    // Sort specific months chronologically
+    specificMonths.sort((a, b) => a.monthKey.localeCompare(b.monthKey));
+
+    // Build HTML
+    let html = '';
+    
+    // Past
+    if (pastCount > 0) {
+      const formattedValue = pastValue > 0 ? `£${pastValue.toLocaleString()}` : '£0';
+      html += `
+        <tr>
+          <td>
+            <label style="margin: 0;">
+              <input type="checkbox" class="close-month-filter" data-month="past" checked>
+              Past
+            </label>
+          </td>
+          <td><span class="close-month-count" data-month="past">${pastCount}</span></td>
+          <td><span class="close-month-value" data-month="past">${formattedValue}</span></td>
+        </tr>`;
+    }
+    
+    // This Month
+    if (thisMonthCount > 0) {
+      const formattedValue = thisMonthValue > 0 ? `£${thisMonthValue.toLocaleString()}` : '£0';
+      html += `
+        <tr>
+          <td>
+            <label style="margin: 0;">
+              <input type="checkbox" class="close-month-filter" data-month="${currentMonthKey}" checked>
+              This Month (${currentMonthKey})
+            </label>
+          </td>
+          <td><span class="close-month-count" data-month="${currentMonthKey}">${thisMonthCount}</span></td>
+          <td><span class="close-month-value" data-month="${currentMonthKey}">${formattedValue}</span></td>
+        </tr>`;
+    }
+    
+    // Specific future months
+    specificMonths.forEach(({ monthKey, count, value }) => {
+      const formattedValue = value > 0 ? `£${value.toLocaleString()}` : '£0';
+      html += `
+        <tr>
+          <td>
+            <label style="margin: 0;">
+              <input type="checkbox" class="close-month-filter" data-month="${monthKey}" checked>
+              ${monthKey}
+            </label>
+          </td>
+          <td><span class="close-month-count" data-month="${monthKey}">${count}</span></td>
+          <td><span class="close-month-value" data-month="${monthKey}">${formattedValue}</span></td>
+        </tr>`;
+    });
+    
+    // Future
+    if (futureCount > 0) {
+      const formattedValue = futureValue > 0 ? `£${futureValue.toLocaleString()}` : '£0';
+      html += `
+        <tr>
+          <td>
+            <label style="margin: 0;">
+              <input type="checkbox" class="close-month-filter" data-month="future" checked>
+              Future
+            </label>
+          </td>
+          <td><span class="close-month-count" data-month="future">${futureCount}</span></td>
+          <td><span class="close-month-value" data-month="future">${formattedValue}</span></td>
+        </tr>`;
+    }
+    
+    $('#closeMonthMetrics').html(html);
+  }
+
+  function updateCloseMonthCounts(filteredDeals) {
+    // Get current date for comparison
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // getMonth() is 0-based
+    const currentMonthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+    
+    // Calculate 6 months forward
+    const sixMonthsForward = new Date(now);
+    sixMonthsForward.setMonth(now.getMonth() + 6);
+    const sixMonthsYear = sixMonthsForward.getFullYear();
+    const sixMonthsMonth = sixMonthsForward.getMonth() + 1;
+    const sixMonthsKey = `${sixMonthsYear}-${String(sixMonthsMonth).padStart(2, '0')}`;
+
+    // Get all month keys that are currently displayed in the table
+    const displayedMonths = new Set();
+    $('#closeMonthMetrics tr').each(function() {
+      const month = $(this).find('.close-month-filter').data('month');
+      if (month) displayedMonths.add(String(month));
+    });
+
+    // Update counts for all displayed months
+    displayedMonths.forEach(monthKey => {
+      let count = 0;
+      let value = 0;
+      
+      for (const d of filteredDeals) {
+        const dp = d.properties || {};
+        const closeDate = dp.closedate;
+        if (closeDate) {
+          const date = new Date(closeDate);
+          if (Number.isFinite(date.getTime())) {
+            const dealMonthKey = date.toISOString().slice(0, 7);
+            
+            // Handle grouped categories
+            if (monthKey === 'past') {
+              if (dealMonthKey < currentMonthKey) {
+                count += 1;
+                value += parseCurrency(dp.amount || 0);
+              }
+            } else if (monthKey === 'future') {
+              if (dealMonthKey > sixMonthsKey) {
+                count += 1;
+                value += parseCurrency(dp.amount || 0);
+              }
+            } else if (dealMonthKey === monthKey) {
+              // Specific month match
+              count += 1;
+              value += parseCurrency(dp.amount || 0);
+            }
+          }
+        }
+      }
+      
+      const countEl = $('#closeMonthMetrics').find(`.close-month-count[data-month="${monthKey}"]`);
+      const valueEl = $('#closeMonthMetrics').find(`.close-month-value[data-month="${monthKey}"]`);
+      if (countEl && countEl.length) countEl.text(String(count));
+      if (valueEl && valueEl.length) {
+        const formattedValue = value > 0 ? `£${value.toLocaleString()}` : '£0';
+        valueEl.text(formattedValue);
+      }
+    });
+  }
+
+  function renderOwnerMetrics(owners, deals) {
+    const counts = new Map();
+    const values = new Map();
+    
+    // Initialize "No Owner" counter
+    const noOwnerId = 'no-owner';
+    counts.set(noOwnerId, 0);
+    values.set(noOwnerId, 0);
+    
+    // Count deals per owner (including owners not in the owners array)
+    deals.forEach(d => {
+      const oid = String(d?.properties?.hubspot_owner_id || '');
+      const hasOwner = oid && oid !== '';
+      
+      if (hasOwner) {
+        // Initialize counter for this owner if not exists
+        if (!counts.has(oid)) {
+          counts.set(oid, 0);
+          values.set(oid, 0);
+        }
+        counts.set(oid, counts.get(oid) + 1);
+        const amount = parseCurrency(d?.properties?.amount || 0);
+        values.set(oid, values.get(oid) + amount);
+      } else {
+        // Count deals without owners
+        counts.set(noOwnerId, counts.get(noOwnerId) + 1);
+        const amount = parseCurrency(d?.properties?.amount || 0);
+        values.set(noOwnerId, values.get(noOwnerId) + amount);
+      }
+    });
+
+    // Build HTML for owners with deals (both known and unknown owners)
+    const knownOwnerRows = owners
+      .filter(o => {
+        const oid = String(o.id);
+        const count = counts.get(oid) || 0;
+        return count > 0; // Only show owners with deals
+      })
+      .map(o => {
+        const oid = String(o.id);
+        const count = counts.get(oid) || 0;
+        const value = values.get(oid) || 0;
+        const formattedValue = value > 0 ? `£${value.toLocaleString()}` : '£0';
+        const ownerName = [o.firstName, o.lastName].filter(Boolean).join(' ').trim() || o.email || 'Unknown';
+        return `
+          <tr>
+            <td>
+              <label style="margin: 0;">
+                <input type="checkbox" class="owner-filter" data-owner-id="${oid}" checked>
+                ${ownerName}
+              </label>
+            </td>
+            <td><span class="owner-count" data-owner-id="${oid}">${count}</span></td>
+            <td><span class="owner-value" data-owner-id="${oid}">${formattedValue}</span></td>
+          </tr>`;
+      }).join('');
+
+    // Add row for unknown owners (grouped together)
+    const unknownOwners = Array.from(counts.entries())
+      .filter(([oid, count]) => oid !== noOwnerId && count > 0 && !owners.some(o => String(o.id) === oid));
+    
+    let unknownOwnerRow = '';
+    if (unknownOwners.length > 0) {
+      const totalUnknownCount = unknownOwners.reduce((sum, [oid, count]) => sum + count, 0);
+      const totalUnknownValue = unknownOwners.reduce((sum, [oid, count]) => sum + (values.get(oid) || 0), 0);
+      const formattedValue = totalUnknownValue > 0 ? `£${totalUnknownValue.toLocaleString()}` : '£0';
+      
+      // Create a special ID for the grouped unknown owners
+      const unknownOwnersId = 'unknown-owners';
+      
+      unknownOwnerRow = `
+        <tr>
+          <td>
+            <label style="margin: 0;">
+              <input type="checkbox" class="owner-filter" data-owner-id="${unknownOwnersId}" checked>
+              <em>Unknown Owners</em>
+            </label>
+          </td>
+          <td><span class="owner-count" data-owner-id="${unknownOwnersId}">${totalUnknownCount}</span></td>
+          <td><span class="owner-value" data-owner-id="${unknownOwnersId}">${formattedValue}</span></td>
+        </tr>`;
+    }
+
+    // Add "No Owner" row if there are deals without owners
+    const noOwnerCount = counts.get(noOwnerId) || 0;
+    const noOwnerValue = values.get(noOwnerId) || 0;
+    const noOwnerFormattedValue = noOwnerValue > 0 ? `£${noOwnerValue.toLocaleString()}` : '£0';
+    
+    const noOwnerRow = noOwnerCount > 0 ? `
+      <tr>
+        <td>
+          <label style="margin: 0;">
+            <input type="checkbox" class="owner-filter" data-owner-id="${noOwnerId}" checked>
+            <em>No Owner</em>
+          </label>
+        </td>
+        <td><span class="owner-count" data-owner-id="${noOwnerId}">${noOwnerCount}</span></td>
+        <td><span class="owner-value" data-owner-id="${noOwnerId}">${noOwnerFormattedValue}</span></td>
+      </tr>` : '';
+
+    $('#ownerMetrics').html(knownOwnerRows + unknownOwnerRow + noOwnerRow);
+    
+  }
+
+  function updateOwnerCounts(owners, filteredDeals) {
+    // Get all owner IDs that are currently displayed in the table
+    const displayedOwnerIds = new Set();
+    $('#ownerMetrics tr').each(function() {
+      const ownerId = $(this).find('.owner-filter').data('owner-id');
+      if (ownerId) displayedOwnerIds.add(String(ownerId));
+    });
+
+    // Update counts for all displayed owners (both known and unknown)
+    displayedOwnerIds.forEach(ownerId => {
+      let count = 0;
+      let value = 0;
+      
+      for (const d of filteredDeals) {
+        const dp = d.properties || {};
+        const dealOwnerId = String(dp.hubspot_owner_id || '');
+        const hasOwner = dealOwnerId && dealOwnerId !== '';
+        
+        // Check if this deal belongs to this owner
+        let belongsToOwner = false;
+        if (ownerId === 'no-owner') {
+          belongsToOwner = !hasOwner;
+        } else if (ownerId === 'unknown-owners') {
+          // For grouped unknown owners, check if the deal has an owner that's not in the owners array
+          belongsToOwner = hasOwner && !owners.some(o => String(o.id) === dealOwnerId);
+        } else {
+          belongsToOwner = hasOwner && dealOwnerId === ownerId;
+        }
+        
+        if (belongsToOwner) {
+          count += 1;
+          value += parseCurrency(dp.amount || 0);
+        }
+      }
+      
+      const countEl = $('#ownerMetrics').find(`.owner-count[data-owner-id="${ownerId}"]`);
+      const valueEl = $('#ownerMetrics').find(`.owner-value[data-owner-id="${ownerId}"]`);
+      if (countEl && countEl.length) countEl.text(String(count));
+      if (valueEl && valueEl.length) {
+        const formattedValue = value > 0 ? `£${value.toLocaleString()}` : '£0';
+        valueEl.text(formattedValue);
+      }
+    });
+  }
+
+  function parseCurrency(amountStr) {
+    if (!amountStr) return 0;
+    if (typeof amountStr === 'number') return amountStr;
+    const s = String(amountStr).replace(/[^0-9.\-]/g, '');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function updateTotalAmount(rowsDeals) {
+    const sum = rowsDeals.reduce((acc, deal) => {
+      const p = deal.properties || {};
+      const n = parseCurrency(p.amount || 0);
+      return acc + n;
+    }, 0);
+    try {
+      document.getElementById('totalAmount').textContent = sum.toLocaleString(undefined, { style: 'currency', currency: 'GBP' });
+    } catch (_) {
+      document.getElementById('totalAmount').textContent = `£${sum}`;
+    }
+  }
+
+  function getCsrfToken() {
+    const el = document.querySelector('meta[name="csrf-token"]');
+    return el ? el.getAttribute('content') : '';
+  }
+
+  function applyFilters(pipelines, deals, owners) {
+    const selectedPipeline = $('.pipeline-filter:checked').first();
+    const pipelineId = selectedPipeline.length ? selectedPipeline.val() : '';
+    const stagesChecked = new Set();
+    $('.stage-filter:checked').each(function() { stagesChecked.add(String($(this).data('stage-id'))); });
+    const ownersChecked = new Set();
+    $('.owner-filter:checked').each(function() { ownersChecked.add(String($(this).data('owner-id'))); });
+    const closeMonthsChecked = new Set();
+    $('.close-month-filter:checked').each(function() { closeMonthsChecked.add(String($(this).data('month'))); });
+    const overdueOnly = $filterOverdue.is(':checked');
+    
+
+    const overdueCount = deals.filter(d => {
+      const p = d.properties || {};
+      const stageText = stageLabel(pipelines, p.pipeline, p.dealstage);
+      const closed = isClosed(p.hs_deal_stage_probability, stageText);
+      return isOverdueClose(p.closedate, closed);
+    }).length;
+    $overdueCount.text(String(overdueCount));
+
+    return deals.filter(d => {
+      const p = d.properties || {};
+      const dealStageId = String(p.dealstage || '');
+      
+      // Handle stage filtering - check if deal stage matches selected stages or is unknown
+      let inStage = true;
+      if (stagesChecked.size > 0) {
+        if (stagesChecked.has(dealStageId)) {
+          inStage = true; // Deal has a known stage that's selected
+        } else if (stagesChecked.has('unknown-stage')) {
+          // Check if this deal has an unknown stage (not in current pipeline)
+          const currentPipeline = pipelines.find(pipe => String(pipe.id) === String(pipelineId));
+          const stageExists = currentPipeline && currentPipeline.stages && 
+                             currentPipeline.stages.some(s => String(s.id) === dealStageId);
+          inStage = !stageExists; // Include if stage doesn't exist in current pipeline
+        } else {
+          inStage = false; // Deal stage not selected
+        }
+      }
+      
+      // Handle owner filtering - if no owners are checked, show all deals (including those without owners)
+      // If owners are checked, show deals that match checked owners OR have no owner (if "No Owner" is checked)
+      const dealOwnerId = String(p.hubspot_owner_id || '');
+      const hasOwner = dealOwnerId && dealOwnerId !== '';
+      let inOwner = true;
+      
+      if (ownersChecked.size > 0) {
+        if (hasOwner) {
+          // Check if this deal's owner is in the checked owners
+          const isKnownOwner = owners.some(o => String(o.id) === dealOwnerId);
+          if (isKnownOwner) {
+            inOwner = ownersChecked.has(dealOwnerId);
+          } else {
+            // Unknown owner - check if "Unknown Owners" is checked
+            inOwner = ownersChecked.has('unknown-owners');
+          }
+        } else {
+          // No owner - check if "No Owner" is checked
+          inOwner = ownersChecked.has('no-owner');
+        }
+      }
+      
+        // Handle close month filtering
+        let inCloseMonth = true;
+        if (closeMonthsChecked.size > 0) {
+          const closeDate = p.closedate;
+          if (closeDate) {
+            const date = new Date(closeDate);
+            if (Number.isFinite(date.getTime())) {
+              const monthKey = date.toISOString().slice(0, 7); // YYYY-MM format
+              
+              // Get current date for comparison
+              const now = new Date();
+              const currentYear = now.getFullYear();
+              const currentMonth = now.getMonth() + 1;
+              const currentMonthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+              
+              // Calculate 6 months forward
+              const sixMonthsForward = new Date(now);
+              sixMonthsForward.setMonth(now.getMonth() + 6);
+              const sixMonthsYear = sixMonthsForward.getFullYear();
+              const sixMonthsMonth = sixMonthsForward.getMonth() + 1;
+              const sixMonthsKey = `${sixMonthsYear}-${String(sixMonthsMonth).padStart(2, '0')}`;
+              
+              // Check if this deal's month matches any checked category
+              inCloseMonth = false;
+              
+              if (monthKey < currentMonthKey && closeMonthsChecked.has('past')) {
+                inCloseMonth = true;
+              } else if (monthKey === currentMonthKey && closeMonthsChecked.has(currentMonthKey)) {
+                inCloseMonth = true;
+              } else if (monthKey > currentMonthKey && monthKey <= sixMonthsKey && closeMonthsChecked.has(monthKey)) {
+                inCloseMonth = true;
+              } else if (monthKey > sixMonthsKey && closeMonthsChecked.has('future')) {
+                inCloseMonth = true;
+              }
+            } else {
+              inCloseMonth = false; // Invalid date, exclude
+            }
+          } else {
+            inCloseMonth = false; // No close date, exclude
+          }
+        }
+
+        if (!inStage || !inOwner || !inCloseMonth) return false;
+        if (!overdueOnly) return true;
+        const stageText = stageLabel(pipelines, p.pipeline, p.dealstage);
+        const closed = isClosed(p.hs_deal_stage_probability, stageText);
+        return isOverdueClose(p.closedate, closed);
+    });
+  }
+
+  async function loadDeals() {
+    const selected = Array.from(document.querySelectorAll('#pipelineFilters .pipeline-filter:checked')).map(el => String(el.value));
+    // enforce single selection for radio
+    const selectedId = selected[0] || '';
+    if (dealsDT) {
+      try { dealsDT.clear().destroy(); } catch (_) {}
+      dealsDT = null;
+    }
+    $tbody.empty();
+    const query = selectedId ? `pipelines=${encodeURIComponent(selectedId)}` : '';
+    const res = await fetch(`/hubspot/deals?${query}&debug=true`, {
+      headers: { 'accept': 'application/json' }
+    });
+    const json = await res.json();
+    if (!json || !json.success) {
+      const msg = json && json.error ? String(json.error) : 'Failed to load deals';
+      $tbody.html(`<tr><td colspan="5">${msg}</td></tr>`);
+      return;
+    }
+
+    const deals = json.data.deals || [];
+    const pipelines = json.data.pipelines || [];
+    const owners = json.data.owners || [];
+    const portalId = '<%= process.env.HUBSPOT_PORTAL_ID || "" %>';
+
+    // For multi-pipeline, use a synthetic id for metrics: 'multi' (we'll count across all stages by their own ids)
+    const firstPipeline = (json.data.selectedPipelines && json.data.selectedPipelines[0]) || (pipelines[0]?.id || '');
+    renderStageMetrics(pipelines, firstPipeline, deals);
+    renderOwnerMetrics(owners, deals);
+    renderCloseMonthMetrics(deals);
+    // Don't call updateStageCounts/updateOwnerCounts on initial load - the render functions already show correct counts
+    if (!Array.isArray(deals) || deals.length === 0) {
+      $tbody.html('<tr><td colspan="5">No deals found for the selected pipeline.</td></tr>');
+    }
+
+    function renderRows(rowsDeals) {
+      updateTotalAmount(rowsDeals);
+      const data = rowsDeals.map(deal => {
+        const p = deal.properties || {};
+        const name = p.dealname || '(no name)';
+        const ownerName = (() => {
+          const id = String(p.hubspot_owner_id || '');
+          const o = owners.find(x => String(x.id) === id);
+          const full = [o?.firstName, o?.lastName].filter(Boolean).join(' ').trim();
+          return full || o?.email || '';
+        })();
+        const stage = stageLabel(pipelines, p.pipeline, p.dealstage);
+        const closedate = formatDate(p.closedate);
+        const amount = p.amount ? Number(p.amount).toLocaleString(undefined, { style: 'currency', currency: 'GBP' }) : '-';
+        const link = deal.id && portalId ? `<a href="https://app.hubspot.com/contacts/${portalId}/deal/${deal.id}" target="_blank">View Deal</a>` : '-';
+        const clickable = `<a href="#" class="deal-link" data-deal-id="${deal.id}" data-pipeline-id="${p.pipeline}">${name}</a>`;
+        return [clickable, ownerName, stage, closedate, amount, link];
+      });
+
+      if (!dealsDT) {
+        dealsDT = $table.DataTable({
+          order: [[2, 'desc']],
+          pageLength: 25,
+          data,
+          columns: [
+            { title: 'Deal Name' },
+            { title: 'Owner' },
+            { title: 'Stage' },
+            { title: 'Close Date' },
+            { title: 'Amount' },
+            { title: 'HubSpot' }
+          ],
+          columnDefs: [
+            { targets: 5, orderable: false },
+            { targets: 5, createdCell: function(td, cellData) { $(td).html(cellData); } }
+          ]
+        });
+      } else {
+        dealsDT.clear();
+        if (data.length > 0) dealsDT.rows.add(data);
+        dealsDT.draw();
+      }
+    }
+
+    const filtered = applyFilters(pipelines, deals, owners);
+    renderRows(filtered);
+
+    // Row click handler for modal open
+    $table.off('click', '.deal-link').on('click', '.deal-link', async function(e) {
+      e.preventDefault();
+      const dealId = $(this).data('deal-id');
+      const pipelineId = $(this).data('pipeline-id');
+      $('#dealId').val(String(dealId));
+      $('#dealStage').html(buildStageOptions(pipelines, pipelineId, null));
+      $('#dealCloseDate').val('');
+      $('#dealNoteHtml').val('');
+      $('#dealLoading').show();
+      $('#dealContent').hide();
+      $('#dealHistory').html('');
+      // Show modal immediately with placeholders
+      try {
+        const modal = new bootstrap.Modal(document.getElementById('dealModal'));
+        modal.show();
+      } catch (_) {
+        $('#dealModal').show();
+      }
+
+      try {
+        const [dealRes, histRes] = await Promise.all([
+          fetch(`/hubspot/deals/${dealId}`, { headers: { 'accept': 'application/json' } }).then(r => r.json()),
+          fetch(`/hubspot/deals/${dealId}/history`, { headers: { 'accept': 'application/json' } }).then(r => r.json())
+        ]);
+        const okDeal = dealRes && dealRes.success && dealRes.data;
+        if (okDeal) {
+          const p = okDeal.properties || {};
+          $('#dealStage').html(buildStageOptions(pipelines, p.pipeline, p.dealstage));
+          if (p.closedate) {
+            const d = new Date(p.closedate);
+            if (Number.isFinite(d.getTime())) {
+              $('#dealCloseDate').val(d.toISOString().slice(0,10));
+            }
+          }
+        }
+        const okHist = histRes && histRes.success && (histRes.data || []);
+        if (okHist) {
+          const items = Array.isArray(okHist.items) ? okHist.items : okHist; // supports grouped or flat
+          const sorted = (items || []).slice().sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+          const html = sorted.map((it, idx) => {
+            const ts = new Date(it.timestamp||0).toLocaleString();
+            const id = `hist_${String(it.id||idx)}`;
+            const open = idx === 0 ? 'open' : '';
+            const type = (it.type || '').toLowerCase();
+            const badge = type ? `<span style="display:inline-block;padding:2px 6px;border-radius:10px;background:${type==='note'?'#e7f1ff':'#e8ffe7'};color:#333;margin-right:8px;font-size:0.8em;text-transform:capitalize;">${type}</span>` : '';
+            return `<div ${open} style="border:1px solid #eee;border-radius:6px;margin-bottom:8px;">
+              <div style="padding:8px 10px;cursor:pointer;display:flex;align-items:center;gap:8px;">
+                ${badge}
+                <span style="font-weight:600;">${ts}</span>
+              </div>
+              <div style="padding:10px;">${it.html || it.text || ''}</div>
+            </div>`;
+          }).join('') || 'No history';
+          $('#dealHistory').html(html);
+        } else {
+          $('#dealHistory').html('No history');
+        }
+        $('#dealLoading').hide();
+        $('#dealContent').show();
+      } catch (_) {
+        $('#dealHistory').html('Failed to load');
+        $('#dealLoading').hide();
+        $('#dealContent').show();
+      }
+    });
+
+    // Save button handler
+    $('#saveDealBtn').off('click').on('click', async function() {
+      const id = $('#dealId').val();
+      const dealstage = $('#dealStage').val();
+      const closedate = $('#dealCloseDate').val();
+      const noteHtml = $('#dealNoteHtml').val();
+      try {
+        $('#saveDealBtn').prop('disabled', true);
+        const updates = {};
+        if (dealstage) updates.dealstage = dealstage;
+        if (closedate) updates.closedate = closedate;
+        const csrf = getCsrfToken();
+        if (Object.keys(updates).length > 0) {
+          const body = { ...updates };
+          if (csrf) body._csrf = csrf;
+          await fetch(`/hubspot/deals/${id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'accept': 'application/json',
+              ...(csrf ? { 'CSRF-Token': csrf, 'X-CSRF-Token': csrf } : {})
+            },
+            body: JSON.stringify(body)
+          });
+        }
+        if (noteHtml && noteHtml.trim() !== '') {
+          const body = { bodyHtml: noteHtml };
+          if (csrf) body._csrf = csrf;
+          await fetch(`/hubspot/deals/${id}/notes`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'accept': 'application/json',
+              ...(csrf ? { 'CSRF-Token': csrf, 'X-CSRF-Token': csrf } : {})
+            },
+            body: JSON.stringify(body)
+          });
+        }
+        // Show success and refresh only modal data
+        $('#dealSaveStatus').text('Saved.').show();
+        setTimeout(() => { $('#dealSaveStatus').fadeOut(300); }, 2000);
+        // Clear note box
+        $('#dealNoteHtml').val('');
+        // Refresh deal details and history in-place
+        try {
+          const [dealRes, histRes] = await Promise.all([
+            fetch(`/hubspot/deals/${id}`, { headers: { 'accept': 'application/json' } }).then(r => r.json()),
+            fetch(`/hubspot/deals/${id}/history`, { headers: { 'accept': 'application/json' } }).then(r => r.json())
+          ]);
+          const okDeal = dealRes && dealRes.success && dealRes.data;
+          if (okDeal) {
+            const p = okDeal.properties || {};
+            // Update stage select (retain same pipeline)
+            if (p.dealstage) $('#dealStage').val(String(p.dealstage));
+            if (p.closedate) {
+              const d = new Date(p.closedate);
+              if (Number.isFinite(d.getTime())) $('#dealCloseDate').val(d.toISOString().slice(0,10));
+            }
+          }
+          const okHist = histRes && histRes.success && (histRes.data || []);
+          if (okHist) {
+            const items = Array.isArray(okHist.items) ? okHist.items : okHist;
+            const sorted = (items || []).slice().sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+            const html = sorted.map((it, idx) => {
+              const ts = new Date(it.timestamp||0).toLocaleString();
+              const type = (it.type || '').toLowerCase();
+              const badge = type ? `<span style="display:inline-block;padding:2px 6px;border-radius:10px;background:${type==='note'?'#e7f1ff':'#e8ffe7'};color:#333;margin-right:8px;font-size:0.8em;text-transform:capitalize;">${type}</span>` : '';
+              return `<div style="border:1px solid #eee;border-radius:6px;margin-bottom:8px;">
+                <div style="padding:8px 10px;display:flex;align-items:center;gap:8px;">
+                  ${badge}<span style=\"font-weight:600;\">${ts}</span>
+                </div>
+                <div style="padding:10px;">${it.html || it.text || ''}</div>
+              </div>`;
+            }).join('') || 'No history';
+            $('#dealHistory').html(html);
+          }
+        } catch (_) {}
+      } catch (e) {
+        alert('Failed to save.');
+      } finally {
+        $('#saveDealBtn').prop('disabled', false);
+      }
+    });
+
+    // Close button handler (works with and without Bootstrap JS)
+    $('#dealModalCloseBtn').off('click').on('click', function() {
+      try { bootstrap.Modal.getInstance(document.getElementById('dealModal'))?.hide(); } catch (_) { $('#dealModal').hide(); }
+    });
+
+    $stageMetrics.off('change', '.stage-filter').on('change', '.stage-filter', function() {
+      const f = applyFilters(pipelines, deals, owners);
+      updateStageCounts(pipelines, firstPipeline, f);
+      updateOwnerCounts(owners, f);
+      updateCloseMonthCounts(f);
+      updateTotalAmount(f);
+      renderRows(f);
+    });
+    $('#ownerMetrics').off('change', '.owner-filter').on('change', '.owner-filter', function() {
+      const f = applyFilters(pipelines, deals, owners);
+      updateStageCounts(pipelines, firstPipeline, f);
+      updateOwnerCounts(owners, f);
+      updateCloseMonthCounts(f);
+      updateTotalAmount(f);
+      renderRows(f);
+    });
+    $filterOverdue.off('change').on('change', function() {
+      const f = applyFilters(pipelines, deals, owners);
+      updateStageCounts(pipelines, firstPipeline, f);
+      updateOwnerCounts(owners, f);
+      updateCloseMonthCounts(f);
+      updateTotalAmount(f);
+      renderRows(f);
+    });
+    $('#closeMonthMetrics').off('change', '.close-month-filter').on('change', '.close-month-filter', function() {
+      const f = applyFilters(pipelines, deals, owners);
+      updateStageCounts(pipelines, firstPipeline, f);
+      updateOwnerCounts(owners, f);
+      updateCloseMonthCounts(f);
+      updateTotalAmount(f);
+      renderRows(f);
+    });
+    $('#resetFiltersBtn').off('click').on('click', function() {
+      // Reset all checkboxes to checked
+      $('.stage-filter').prop('checked', true);
+      $('.owner-filter').prop('checked', true);
+      $('.close-month-filter').prop('checked', true);
+      $filterOverdue.prop('checked', false);
+      
+      // Apply filters with all checked
+      const f = applyFilters(pipelines, deals, owners);
+      updateStageCounts(pipelines, firstPipeline, f);
+      updateOwnerCounts(owners, f);
+      updateCloseMonthCounts(f);
+      updateTotalAmount(f);
+      renderRows(f);
+    });
+  }
+
+  $('#pipelineFilters').on('change', '.pipeline-filter', loadDeals);
+  $(document).ready(loadDeals);
+})();
+</script>
+
+<%- include('../../../partials/footer') %>
+
+

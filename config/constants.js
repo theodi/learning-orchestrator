@@ -43,6 +43,11 @@ export const HTTP_STATUS = {
   INTERNAL_SERVER_ERROR: 500,
 };
 
+export const DEBUG_MODE = {
+  ENABLED: process.env.DEBUG_MODE === 'true' || process.env.NODE_ENV === 'development',
+  EMAIL_DEBUG: process.env.EMAIL_DEBUG === 'true',
+};
+
 // Helper function to get Forecast API URL for a specific type
 export const getForecastApiUrl = (type) => {
   const version = API_ENDPOINTS.FORECAST.VERSION_MAP[type];
@@ -58,5 +63,6 @@ export default {
   CACHE_DURATION,
   HUBSPOT_CONFIG,
   HTTP_STATUS,
+  DEBUG_MODE,
   getForecastApiUrl,
 };

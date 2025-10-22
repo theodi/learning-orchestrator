@@ -988,13 +988,11 @@ async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
       const lineItemResponse = await axios.post(lineItemUrl, lineItemData, { headers: this.headers });
       const lineItemId = lineItemResponse.data.id;
 
-      console.log(`Created line item ${lineItemId} for product ${productId}`);
 
       // Then associate the line item with the deal
       const associationUrl = `${this.baseUrl}/crm/v3/objects/deals/${dealId}/associations/line_items/${lineItemId}/deal_to_line_item`;
       await axios.put(associationUrl, {}, { headers: this.headers });
 
-      console.log(`Associated line item ${lineItemId} with deal ${dealId}`);
 
       return lineItemId;
     } catch (error) {
@@ -1177,44 +1175,47 @@ async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
    /**
     * Fetch deals from a specific pipeline
     */
-   async fetchDealsFromPipeline(pipelineId, limit = 100) {
-     const url = `${this.baseUrl}/crm/v3/objects/deals/search`;
-     
-     const body = {
-       filterGroups: [
-         {
-           filters: [
-             {
-               propertyName: 'pipeline',
-               operator: 'EQ',
-               value: pipelineId
-             }
-           ]
-         }
-       ],
-       properties: [
-         'dealname', 'amount', 'pipeline', 'dealstage', 'description', 
-         'closedate', 'startdate', 'course_name', 'course_date', 'hubspot_owner_id',
-         'calendar_event_id', 'calendar_event_url', 'forecast_id', 'projecturl',
-         'createdate', 'hs_lastmodifieddate'
-       ],
-       limit: limit,
-       sorts: [
-         {
-           propertyName: 'createdate',
-           direction: 'DESCENDING'
-         }
-       ]
-     };
-
-     try {
-       const response = await axios.post(url, body, { headers: this.headers });
-       return response.data.results || [];
-     } catch (error) {
-       console.error("Error fetching deals from pipeline:", JSON.stringify(error.response?.data || error.message, null, 2));
-       throw error;
-     }
-   }
+  async fetchDealsFromPipeline(pipelineId, limit = 100) {
+    const url = `${this.baseUrl}/crm/v3/objects/deals/search`;
+    const all = [];
+    let after = null;
+    let pageCount = 0;
+    try {
+      while (true) {
+        const body = {
+          filterGroups: [
+            {
+              filters: [
+                { propertyName: 'pipeline', operator: 'EQ', value: pipelineId }
+              ]
+            }
+          ],
+          properties: [
+            'dealname','amount','pipeline','dealstage','description',
+            'closedate','startdate','course_name','course_date','hubspot_owner_id',
+            'calendar_event_id','calendar_event_url','forecast_id','projecturl',
+            'createdate','hs_lastmodifieddate','hs_deal_stage_probability'
+          ],
+          limit: 100,
+          sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
+          ...(after ? { after } : {})
+        };
+        const response = await this.requestWithRetry(() => axios.post(url, body, { headers: this.headers }));
+        const results = response?.data?.results || [];
+        all.push(...results);
+        after = response?.data?.paging?.next?.after || null;
+        pageCount += 1;
+        if (!after) break;
+        if (pageCount > 50) break; // safety cap
+      }
+      if (process.env.DEBUG_HUBSPOT === 'true') {
+      }
+      return all;
+    } catch (error) {
+      console.error('Error fetching deals from pipeline:', JSON.stringify(error.response?.data || error.message, null, 2));
+      throw error;
+    }
+  }
   
 
   /**
@@ -1281,6 +1282,16 @@ async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
       console.error("Error fetching deals for product:", error.response?.data || error.message);
       throw error;
     }
+  }
+
+  /**
+   * Fetch deals from multiple pipelines (in parallel) and flatten
+   */
+  async fetchDealsFromPipelines(pipelineIds = [], limitPerPipeline = 100) {
+    const ids = Array.from(new Set((pipelineIds || []).map(String).filter(Boolean)));
+    if (ids.length === 0) return [];
+    const results = await Promise.all(ids.map(id => this.fetchDealsFromPipeline(id, limitPerPipeline).catch(() => [])));
+    return results.flat();
   }
 
   /**
@@ -1490,6 +1501,40 @@ async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
   }
 
   /**
+   * Create a HubSpot note with a Creator header and associate with a deal (and optionally contact).
+   */
+  async logNoteToDealWithCreator({ dealId, creatorName = '', creatorEmail = '', subject = 'Note', bodyHtml = '', createdAt = Date.now(), contactId = null }) {
+    const timestampIso = new Date(createdAt).toISOString();
+    try {
+      const header = `<div><p><strong>${subject || 'Note'}</strong></p><p><em>Creator:</em> ${creatorName || ''}${creatorEmail ? ` &lt;${creatorEmail}&gt;` : ''}</p></div>`;
+      const noteRes = await axios.post(
+        `${this.baseUrl}/crm/v3/objects/notes`,
+        { properties: { hs_note_body: `${header}${bodyHtml || ''}`, hs_timestamp: timestampIso } },
+        { headers: this.headers }
+      );
+      const noteId = noteRes?.data?.id;
+      if (noteId && dealId) {
+        await axios.put(
+          `${this.baseUrl}/crm/v3/objects/notes/${noteId}/associations/deals/${dealId}/note_to_deal`,
+          {},
+          { headers: this.headers }
+        );
+      }
+      if (noteId && contactId) {
+        await axios.put(
+          `${this.baseUrl}/crm/v3/objects/notes/${noteId}/associations/contacts/${contactId}/note_to_contact`,
+          {},
+          { headers: this.headers }
+        );
+      }
+      return { id: noteId, object: 'note' };
+    } catch (error) {
+      console.error('Error logging note with creator:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Send data to Zapier webhook
    */
   async sendToZapier(payload) {
@@ -1564,6 +1609,39 @@ async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
     } catch (error) {
       console.error("Error finding user by email:", JSON.stringify(error.response?.data || error.message, null, 2));
       return null;
+    }
+  }
+
+  /**
+   * Fetch all HubSpot owners (users) with basic fields
+   */
+  async fetchOwners() {
+    const owners = [];
+    let after = null;
+    let hasMore = true;
+    try {
+      while (hasMore) {
+        const url = `${this.baseUrl}/crm/v3/owners`;
+        const res = await axios.get(url, { headers: this.headers, params: { limit: 100, after: after || undefined } });
+        const results = res?.data?.results || res?.data || [];
+        results.forEach(o => {
+          owners.push({
+            id: String(o.id || o.ownerId || ''),
+            firstName: o.firstName || o.firstname || '',
+            lastName: o.lastName || o.lastname || '',
+            email: o.email || ''
+          });
+        });
+        after = res?.data?.paging?.next?.after || null;
+        hasMore = !!after;
+        if (!res?.data?.paging && (!Array.isArray(results) || results.length < 100)) {
+          hasMore = false;
+        }
+      }
+      return owners;
+    } catch (error) {
+      console.error('Error fetching HubSpot owners:', error.response?.data || error.message);
+      return owners;
     }
   }
 

@@ -8,7 +8,8 @@ import { ForecastService } from '../services/forecastService.js';
 import { EnrollmentService } from '../services/enrollmentService.js';
 import { MoodleService } from '../services/moodleService.js';
 import { validateApiKey, validateProjectId } from '../utils/validation.js';
-import { HTTP_STATUS, HUBSPOT_CONFIG } from '../config/constants.js';
+import { HTTP_STATUS, HUBSPOT_CONFIG, DEBUG_MODE } from '../config/constants.js';
+import { IGNORED_PIPELINE_LABELS } from '../config/pipelines.js';
 
 export class HubSpotController extends BaseController {
   constructor() {
@@ -37,6 +38,87 @@ export class HubSpotController extends BaseController {
     return this.renderPage(req, res, 'pages/hubspot/browse', {
       title: 'Browse HubSpot Data'
     });
+  }
+
+  // Get deals (by pipeline) with content negotiation
+  async getDeals(req, res) {
+    try {
+      const acceptHeader = req.get('accept') || '';
+      const rawPipes = req.query.pipeline || req.query.pipelines || process.env.HUBSPOT_DEFAULT_PIPELINE_ID;
+      const pipelineIds = Array.isArray(rawPipes)
+        ? rawPipes.map(String)
+        : String(rawPipes || '').split(',').map(s => s.trim()).filter(Boolean);
+      const debug = String(req.query.debug || '').toLowerCase() === 'true';
+
+      if (acceptHeader.includes('application/json')) {
+        // Fetch deals and return JSON (multi-pipeline support)
+        let deals = [];
+        if (pipelineIds.length > 1) {
+          deals = await this.hubspotService.fetchDealsFromPipelines(pipelineIds);
+        } else {
+          deals = await this.hubspotService.fetchDealsFromPipeline(pipelineIds[0]);
+        }
+        // Filter: remove closed (won/lost/100%) older than 24 months to reduce data size
+        const twentyFourMonthsAgo = new Date();
+        twentyFourMonthsAgo.setMonth(twentyFourMonthsAgo.getMonth() - 24);
+        const cutoffTs = twentyFourMonthsAgo.getTime();
+        const filteredDeals = deals.filter(d => {
+          const p = d?.properties || {};
+          const cd = p.closedate ? new Date(p.closedate) : null;
+          const prob = Number(p.hs_deal_stage_probability);
+          const isHundred = Number.isFinite(prob) && prob >= 1;
+          const stageText = String(p.dealstage || '').toLowerCase();
+          const isClosed = isHundred || stageText.includes('closed') || stageText.includes('won') || stageText.includes('lost');
+          if (!isClosed) return true;
+          if (!cd || !Number.isFinite(cd.getTime())) return true;
+          return cd.getTime() >= cutoffTs;
+        });
+        // Also fetch pipelines to map stage labels client-side if needed
+        let pipelines = [];
+        try {
+          pipelines = await this.hubspotService.fetchPipelines();
+          if (Array.isArray(pipelines) && IGNORED_PIPELINE_LABELS?.length) {
+            pipelines = pipelines.filter(p => !IGNORED_PIPELINE_LABELS.includes(p.label));
+          }
+        } catch (_) {}
+        // Fetch owners to resolve names client-side
+        let owners = [];
+        try {
+          owners = await this.hubspotService.fetchOwners();
+        } catch (_) {}
+        if (debug) {
+          if (Array.isArray(filteredDeals) && filteredDeals.length > 0) {
+            const sample = filteredDeals[0];
+          }
+        }
+        return this.sendSuccess(res, { deals: filteredDeals, pipelines, owners, currentPipeline: pipelineIds[0] || null, selectedPipelines: pipelineIds });
+      }
+
+      // HTML page render with pipelines for selector
+      let pipelines = [];
+      try {
+        pipelines = await this.hubspotService.fetchPipelines();
+        if (Array.isArray(pipelines) && IGNORED_PIPELINE_LABELS?.length) {
+          pipelines = pipelines.filter(p => !IGNORED_PIPELINE_LABELS.includes(p.label));
+        }
+      } catch (e) {
+        pipelines = [];
+      }
+      const envDefault = process.env.HUBSPOT_DEFAULT_PIPELINE_ID || '';
+      const preferred = pipelines.find(p => (p.label || '').toLowerCase() === 'learning and consultancy');
+      const currentPipeline = pipelineIds[0] || preferred?.id || envDefault || (pipelines[0]?.id || '');
+
+      if (debug) {
+      }
+      return this.renderPage(req, res, 'pages/hubspot/deals/index', {
+        title: 'HubSpot Deals',
+        pipelines,
+        currentPipeline
+      });
+    } catch (error) {
+      console.error('[GET /hubspot/deals] error:', error?.response?.data || error?.message || error);
+      return this.sendError(res, 'Failed to fetch deals');
+    }
   }
 
   // Search companies
@@ -184,6 +266,46 @@ export class HubSpotController extends BaseController {
     }
   }
 
+  // Update deal fields (stage, closedate)
+  async updateDealFields(req, res) {
+    try {
+      const { id } = req.params;
+      const { dealstage, closedate } = req.body || {};
+      const payload = {};
+      if (dealstage) payload.dealstage = dealstage;
+      if (closedate) payload.closedate = closedate;
+      if (Object.keys(payload).length === 0) return this.sendError(res, 'No fields to update', HTTP_STATUS.BAD_REQUEST);
+      const updated = await this.hubspotService.updateDeal(id, payload);
+      return this.sendSuccess(res, updated, 'Deal updated');
+    } catch (error) {
+      return this.sendError(res, error?.response?.data || error?.message || 'Failed to update deal');
+    }
+  }
+
+  // Add a note to a deal
+  async addDealNote(req, res) {
+    try {
+      const { id } = req.params;
+      const { bodyHtml, subject } = req.body || {};
+      if (!bodyHtml) return this.sendError(res, 'Missing bodyHtml', HTTP_STATUS.BAD_REQUEST);
+      const creatorName = req.user ? (req.user.displayName || req.user.name || req.user.username || '') : '';
+      const creatorEmail = req.user ? (req.user.email || (req.user.emails && req.user.emails[0] && req.user.emails[0].value) || '') : '';
+      // Create note and associate to deal with Creator header
+      const result = await this.hubspotService.logNoteToDealWithCreator({
+        dealId: String(id),
+        creatorName,
+        creatorEmail,
+        subject: subject || 'Note',
+        bodyHtml: bodyHtml,
+        createdAt: Date.now(),
+        contactId: null
+      });
+      return this.sendSuccess(res, result, 'Note added');
+    } catch (error) {
+      return this.sendError(res, error?.response?.data || error?.message || 'Failed to add note');
+    }
+  }
+
   // Webhook: queue welcome/reminder emails to all pending learners on a deal
   async sendDealLearnerReminders(req, res) {
     try {
@@ -196,16 +318,32 @@ export class HubSpotController extends BaseController {
       if (!deal_id) {
         return this.sendError(res, 'Missing deal_id', HTTP_STATUS.BAD_REQUEST);
       }
+
+      // Check for debug mode
+      const debugMode = DEBUG_MODE.EMAIL_DEBUG || 
+                       String(req.query.debug || req.body?.debug || '').toLowerCase() === 'true';
+
       // Optional: single learner mode (HubSpot workflow per enrolled contact)
       const contactEmail = (req.body?.contact_email || req.body?.email || req.query?.contact_email || req.query?.email || '').toString().trim();
       if (contactEmail) {
         try {
-          const result = await this.sendReminderForSingleLearner(deal_id, contactEmail);
-          return this.sendSuccess(res, result, 'Reminder processed for learner');
+          const result = await this.sendReminderForSingleLearner(deal_id, contactEmail, debugMode);
+          return this.sendSuccess(res, result, debugMode ? 'Debug: Reminder would be processed for learner' : 'Reminder processed for learner');
         } catch (err) {
           return this.sendError(res, err?.message || 'Failed to send learner reminder');
         }
       }
+
+      // For debug mode, process immediately and return results
+      if (debugMode) {
+        try {
+          const result = await this.processDealLearnerRemindersInternal(deal_id, true);
+          return this.sendSuccess(res, result, 'Debug: Email processing simulation completed');
+        } catch (err) {
+          return this.sendError(res, err?.message || 'Failed to process debug reminders');
+        }
+      }
+
       // Queue: if a job exists and running, return 202; else enqueue
       const existing = this.getReminderJob(deal_id);
       if (existing && (existing.status === 'running' || existing.status === 'queued')) {
@@ -217,7 +355,7 @@ export class HubSpotController extends BaseController {
       setImmediate(async () => {
         this.setReminderJob(deal_id, { status: 'running' });
         try {
-          const result = await this.processDealLearnerRemindersInternal(deal_id);
+          const result = await this.processDealLearnerRemindersInternal(deal_id, false);
           this.setReminderJob(deal_id, { status: 'completed', finishedAt: new Date().toISOString(), summary: result?.summary || null });
         } catch (err) {
           this.setReminderJob(deal_id, { status: 'failed', finishedAt: new Date().toISOString(), error: err?.message || String(err) });
@@ -233,7 +371,7 @@ export class HubSpotController extends BaseController {
   // (Removed) getDealReminderStatus: using single endpoint for idempotent queue + status
 
   // The actual processing, factored out for queue execution
-  async processDealLearnerRemindersInternal(deal_id) {
+  async processDealLearnerRemindersInternal(deal_id, debugMode = false) {
     const lineItems = await this.hubspotService.fetchDealLineItemsWithProducts(deal_id);
     const courseEntries = lineItems
       .map(li => ({
@@ -290,32 +428,63 @@ export class HubSpotController extends BaseController {
       const html = this.emailService.buildHtml({ title: template.subject, bodyHtml: template.bodyHtml });
 
       let messageId = null;
-      try {
-        const info = await this.emailService.sendHtmlEmail({ to: email, subject: template.subject, html });
-        messageId = info?.messageId || null;
-      } catch (err) {
-        results.push({ email, sent: false, error: err?.message || 'send failed' });
-        continue;
-      }
-
-      let contactId = null;
-      try {
-        const matches = await this.hubspotService.searchContactsByTerm(email);
-        contactId = matches?.[0]?.id || null;
-      } catch (_) {}
-      try {
-        await this.hubspotService.logEmailToDealAndContact({
-          dealId: String(deal_id),
+      // Use the contact ID from the deal-associated learner (already fetched above)
+      const contactId = learner?.id || null;
+      
+      if (debugMode) {
+        // Debug mode: log what would be sent without actually sending
+        console.log(`\n=== DEBUG MODE: Email for ${email} ===`);
+        console.log(`Subject: ${template.subject}`);
+        console.log(`Email Type: ${determinedEmailType}`);
+        console.log(`Learner Name: ${learnerName}`);
+        console.log(`Pending Courses:`, pendingCourses.map(c => `${c.course_name} (ID: ${c.course_id})`));
+        console.log(`Verify URL: ${verifyUrl}`);
+        console.log(`HTML Content Length: ${html.length} characters`);
+        console.log(`Contact ID: ${contactId || 'Not found in deal learners'}`);
+        
+        console.log(`Would log note to HubSpot with:`);
+        console.log(`- Deal ID: ${deal_id}`);
+        console.log(`- Contact ID: ${contactId || 'null'}`);
+        console.log(`- Subject: Email sent: ${template.subject}`);
+        console.log(`- From: ${process.env.EMAIL_FROM || 'training@theodi.org'}`);
+        console.log(`- To: ${email}`);
+        console.log(`=== END DEBUG ===\n`);
+        
+        results.push({ 
+          email, 
+          sent: false, 
+          debug: true, 
+          emailType: determinedEmailType, 
+          messageId: 'DEBUG-SIMULATED',
           contactId,
-          subject: `Email sent: ${template.subject}`,
-          bodyHtml: html,
-          fromEmail: process.env.EMAIL_FROM || 'training@theodi.org',
-          toEmail: email,
-          sentAt: Date.now()
+          subject: template.subject,
+          courses: pendingCourses,
+          verifyUrl
         });
-      } catch (_) {}
+      } else {
+        // Normal mode: actually send emails and log notes
+        try {
+          const info = await this.emailService.sendHtmlEmail({ to: email, subject: template.subject, html });
+          messageId = info?.messageId || null;
+        } catch (err) {
+          results.push({ email, sent: false, error: err?.message || 'send failed' });
+          continue;
+        }
 
-      results.push({ email, sent: true, emailType: determinedEmailType, messageId });
+        try {
+          await this.hubspotService.logEmailToDealAndContact({
+            dealId: String(deal_id),
+            contactId,
+            subject: `Email sent: ${template.subject}`,
+            bodyHtml: html,
+            fromEmail: process.env.EMAIL_FROM || 'training@theodi.org',
+            toEmail: email,
+            sentAt: Date.now()
+          });
+        } catch (_) {}
+
+        results.push({ email, sent: true, emailType: determinedEmailType, messageId });
+      }
     }
 
     const summary = {
@@ -327,7 +496,7 @@ export class HubSpotController extends BaseController {
     return { results, summary };
   }
   // Helper: send reminder/welcome for a single learner on a deal
-  async sendReminderForSingleLearner(deal_id, contact_email) {
+  async sendReminderForSingleLearner(deal_id, contact_email, debugMode = false) {
     const lineItems = await this.hubspotService.fetchDealLineItemsWithProducts(deal_id);
     const courseEntries = lineItems
       .map(li => ({
@@ -337,18 +506,30 @@ export class HubSpotController extends BaseController {
       }))
       .filter(e => Number.isFinite(e.course_id));
 
-    // Best-effort learner name lookup (used for Moodle user creation and email)
+    // Verify the contact is actually associated with the deal and labeled as Learner
+    let contactId = null;
     let firstName = '';
     let lastName = '';
     let learnerName = 'Learner';
+    
     try {
-      const matches = await this.hubspotService.searchContactsByTerm(contact_email);
-      const first = matches?.[0]?.properties || {};
-      firstName = first.firstname || first.firstName || '';
-      lastName = first.lastname || first.lastName || '';
+      const dealLearners = await this.hubspotService.fetchDealContactsByLabel(deal_id, 'Learner');
+      const learner = dealLearners.find(l => l.email === contact_email);
+      
+      if (!learner) {
+        throw new Error(`Contact ${contact_email} is not associated with deal ${deal_id} or not labeled as Learner`);
+      }
+      
+      // Use the contact data from the deal association
+      contactId = learner.id;
+      firstName = learner.first_name || '';
+      lastName = learner.last_name || '';
       const full = `${firstName} ${lastName}`.trim();
-      learnerName = full || first.name || first.fullname || learnerName;
-    } catch (_) {}
+      learnerName = full || learner.name || 'Learner';
+    } catch (error) {
+      // If we can't verify the contact is associated with the deal, throw an error
+      throw new Error(`Failed to verify contact association: ${error.message}`);
+    }
 
     // Ensure Moodle user exists (auth oauth2), but do not modify if already present
     let moodleUserId = null;
@@ -402,33 +583,93 @@ export class HubSpotController extends BaseController {
       : buildReminderEmail({ moodleRootUrl: moodleRoot, courses: pendingCourses, verifyUrl, anyEnrolled, learnerName });
     const html = this.emailService.buildHtml({ title: template.subject, bodyHtml: template.bodyHtml });
 
-    const info = await this.emailService.sendHtmlEmail({ to: contact_email, subject: template.subject, html });
+    let messageId = null;
+    // contactId is already set from the deal learner verification above
 
-    let contactId = null;
-    try {
-      const matches = await this.hubspotService.searchContactsByTerm(contact_email);
-      contactId = matches?.[0]?.id || null;
-    } catch (_) {}
-    try {
-      await this.hubspotService.logEmailToDealAndContact({
-        dealId: String(deal_id),
+    if (debugMode) {
+      // Debug mode: log what would be sent without actually sending
+      console.log(`\n=== DEBUG MODE: Single Learner Email for ${contact_email} ===`);
+      console.log(`Subject: ${template.subject}`);
+      console.log(`Email Type: ${determinedEmailType}`);
+      console.log(`Learner Name: ${learnerName}`);
+      console.log(`Pending Courses:`, pendingCourses.map(c => `${c.course_name} (ID: ${c.course_id})`));
+      console.log(`Verify URL: ${verifyUrl}`);
+      console.log(`HTML Content Length: ${html.length} characters`);
+      console.log(`Contact ID: ${contactId || 'Not found in deal learners'}`);
+      
+      console.log(`Would log note to HubSpot with:`);
+      console.log(`- Deal ID: ${deal_id}`);
+      console.log(`- Contact ID: ${contactId || 'null'}`);
+      console.log(`- Subject: Email sent: ${template.subject}`);
+      console.log(`- From: ${process.env.EMAIL_FROM || 'training@theodi.org'}`);
+      console.log(`- To: ${contact_email}`);
+      console.log(`=== END DEBUG ===\n`);
+      
+      return { 
+        email: contact_email, 
+        sent: false, 
+        debug: true, 
+        emailType: determinedEmailType, 
+        messageId: 'DEBUG-SIMULATED',
         contactId,
-        subject: `Email sent: ${template.subject}`,
-        bodyHtml: html,
-        fromEmail: process.env.EMAIL_FROM || 'training@theodi.org',
-        toEmail: contact_email,
-        sentAt: Date.now()
-      });
-    } catch (_) {}
+        subject: template.subject,
+        courses: pendingCourses,
+        verifyUrl
+      };
+    } else {
+      // Normal mode: actually send email and log note
+      const info = await this.emailService.sendHtmlEmail({ to: contact_email, subject: template.subject, html });
+      messageId = info?.messageId || null;
 
-    return { email: contact_email, sent: true, emailType: determinedEmailType, messageId: info?.messageId || null };
+      try {
+        await this.hubspotService.logEmailToDealAndContact({
+          dealId: String(deal_id),
+          contactId,
+          subject: `Email sent: ${template.subject}`,
+          bodyHtml: html,
+          fromEmail: process.env.EMAIL_FROM || 'training@theodi.org',
+          toEmail: contact_email,
+          sentAt: Date.now()
+        });
+      } catch (_) {}
+
+      return { email: contact_email, sent: true, emailType: determinedEmailType, messageId };
+    }
   }
   // Send learner reminder email and log to HubSpot
   async sendLearnerReminder(req, res) {
     try {
-      const { deal_id, contact_email, courses, emailType, learner_name } = req.body || {};
+      const { deal_id, contact_email, courses, emailType, learner_name, debug } = req.body || {};
       if (!deal_id || !contact_email || !Array.isArray(courses)) {
         return this.sendError(res, 'Missing deal_id, contact_email, or courses[]', HTTP_STATUS.BAD_REQUEST);
+      }
+
+      // Check for debug mode
+      const debugMode = DEBUG_MODE.EMAIL_DEBUG || 
+                       String(debug || req.query?.debug || '').toLowerCase() === 'true';
+
+      // Verify the contact is actually associated with the deal and labeled as Learner
+      let contactId = null;
+      let learnerName = learner_name;
+      
+      try {
+        const dealLearners = await this.hubspotService.fetchDealContactsByLabel(deal_id, 'Learner');
+        const learner = dealLearners.find(l => l.email === contact_email);
+        
+        if (!learner) {
+          throw new Error(`Contact ${contact_email} is not associated with deal ${deal_id} or not labeled as Learner`);
+        }
+        
+        // Use the contact data from the deal association
+        contactId = learner.id;
+        if (!learnerName) {
+          const firstName = learner.first_name || '';
+          const lastName = learner.last_name || '';
+          const full = `${firstName} ${lastName}`.trim();
+          learnerName = full || learner.name || 'Learner';
+        }
+      } catch (error) {
+        return this.sendError(res, `Failed to verify contact association: ${error.message}`);
       }
 
       // Determine email type based on previous emails sent (if not explicitly provided)
@@ -441,31 +682,6 @@ export class HubSpotController extends BaseController {
       // Build verification URL for deal-based verification
       const baseUrl = process.env.BASE_URL || 'http://localhost:3080';
       const verifyUrl = `${baseUrl}/enrollments/verify?deal_id=${deal_id}&email=${encodeURIComponent(contact_email)}`;
-      
-      // Use provided learner name or fallback to lookup
-      let learnerName = learner_name;
-      let contactId = null;
-      
-      if (!learnerName) {
-        try {
-          const matches = await this.hubspotService.searchContactsByTerm(contact_email);
-          const first = matches?.[0] || null;
-          contactId = first?.id || null;
-          const props = first?.properties || {};
-          const firstName = props.firstname || props.firstName || '';
-          const lastName = props.lastname || props.lastName || '';
-          const full = `${firstName} ${lastName}`.trim();
-          learnerName = full || props.name || props.fullname || 'Learner';
-        } catch (_) {
-          learnerName = 'Learner';
-        }
-      } else {
-        // Still need contactId for logging
-        try {
-          const matches = await this.hubspotService.searchContactsByTerm(contact_email);
-          contactId = matches?.[0]?.id || null;
-        } catch (_) {}
-      }
 
       const template = determinedEmailType === 'welcome' 
         ? buildWelcomeEmail({ moodleRootUrl: moodleRoot, courses, verifyUrl, anyEnrolled, learnerName })
@@ -473,31 +689,62 @@ export class HubSpotController extends BaseController {
       
       const html = this.emailService.buildHtml({ title: template.subject, bodyHtml: template.bodyHtml });
 
-      // Send email
-      const info = await this.emailService.sendHtmlEmail({
-        to: contact_email,
-        subject: template.subject,
-        html
-      });
+      let messageId = null;
 
-      // contactId already resolved above
+      if (debugMode) {
+        // Debug mode: log what would be sent without actually sending
+        console.log(`\n=== DEBUG MODE: Manual Learner Reminder for ${contact_email} ===`);
+        console.log(`Subject: ${template.subject}`);
+        console.log(`Email Type: ${determinedEmailType}`);
+        console.log(`Learner Name: ${learnerName}`);
+        console.log(`Courses:`, courses.map(c => `${c.course_name} (ID: ${c.course_id}, Enrolled: ${c.enrolled}, Accessed: ${c.accessed})`));
+        console.log(`Verify URL: ${verifyUrl}`);
+        console.log(`HTML Content Length: ${html.length} characters`);
+        console.log(`Contact ID: ${contactId || 'Not found in deal learners'}`);
+        
+        console.log(`Would log note to HubSpot with:`);
+        console.log(`- Deal ID: ${deal_id}`);
+        console.log(`- Contact ID: ${contactId || 'null'}`);
+        console.log(`- Subject: Email sent: ${template.subject}`);
+        console.log(`- From: ${process.env.EMAIL_FROM || 'training@theodi.org'}`);
+        console.log(`- To: ${contact_email}`);
+        console.log(`=== END DEBUG ===\n`);
+        
+        return this.sendSuccess(res, { 
+          messageId: 'DEBUG-SIMULATED',
+          emailType: determinedEmailType,
+          subject: template.subject,
+          debug: true,
+          contactId,
+          courses,
+          verifyUrl
+        }, `Debug: ${determinedEmailType === 'welcome' ? 'Welcome' : 'Reminder'} email would be sent`);
+      } else {
+        // Normal mode: actually send email and log note
+        const info = await this.emailService.sendHtmlEmail({
+          to: contact_email,
+          subject: template.subject,
+          html
+        });
+        messageId = info?.messageId || null;
 
-      // Log to HubSpot (as a Note associated to deal and contact)
-      await this.hubspotService.logEmailToDealAndContact({
-        dealId: String(deal_id),
-        contactId: contactId,
-        subject: `Email sent: ${template.subject}`,
-        bodyHtml: html,
-        fromEmail: process.env.EMAIL_FROM || 'training@theodi.org',
-        toEmail: contact_email,
-        sentAt: Date.now()
-      });
+        // Log to HubSpot (as a Note associated to deal and contact)
+        await this.hubspotService.logEmailToDealAndContact({
+          dealId: String(deal_id),
+          contactId: contactId,
+          subject: `Email sent: ${template.subject}`,
+          bodyHtml: html,
+          fromEmail: process.env.EMAIL_FROM || 'training@theodi.org',
+          toEmail: contact_email,
+          sentAt: Date.now()
+        });
 
-      return this.sendSuccess(res, { 
-        messageId: info?.messageId || null, 
-        emailType: determinedEmailType,
-        subject: template.subject 
-      }, `${determinedEmailType === 'welcome' ? 'Welcome' : 'Reminder'} email sent`);
+        return this.sendSuccess(res, { 
+          messageId: messageId, 
+          emailType: determinedEmailType,
+          subject: template.subject 
+        }, `${determinedEmailType === 'welcome' ? 'Welcome' : 'Reminder'} email sent`);
+      }
     } catch (error) {
       return this.sendError(res, error.message || 'Failed to send reminder');
     }
@@ -535,7 +782,6 @@ export class HubSpotController extends BaseController {
       let dealResult = null;
       try {
         dealResult = await this.createSelfPacedHubSpotDeal(payload);
-        console.log('HubSpot deal created for self-paced course:', dealResult);
       } catch (error) {
         console.error('Failed to create HubSpot deal for self-paced course:', error.message);
         return this.renderPage(req, res, 'pages/hubspot/error', {
@@ -582,13 +828,11 @@ export class HubSpotController extends BaseController {
       if (validation) return validation;
 
       const payload = { ...req.body };
-      console.log('Form submission:', payload);
 
       // Create HubSpot deal
       let dealResult = null;
       try {
         dealResult = await this.createHubSpotDeal(payload);
-        console.log('HubSpot deal created:', dealResult);
       } catch (error) {
         console.error('Failed to create HubSpot deal:', error.message);
         return this.renderPage(req, res, 'pages/hubspot/error', {
@@ -705,7 +949,6 @@ export class HubSpotController extends BaseController {
 
       // Fetch line items (to get moodle_course_id)
       const lineItems = await this.hubspotService.fetchDealLineItemsWithProducts(deal_id);
-      console.log('lineItems', lineItems);
       const courseEntries = lineItems
         .map(li => ({ course_id: parseInt(li.moodle_course_id), term_months: Number(li.term_months) }))
         .filter(e => Number.isFinite(e.course_id));
@@ -719,7 +962,6 @@ export class HubSpotController extends BaseController {
         for (const entry of courseEntries) {
           const cid = entry.course_id;
           const termMonths = Number.isFinite(entry.term_months) && entry.term_months > 0 ? entry.term_months : 12;
-          console.log('termMonths', termMonths);
           try {
             const status = await this.enrollmentService.getUserCourseStatus(cid, email, termMonths);
             results.push({
@@ -1080,9 +1322,7 @@ Completed By: ${formData.completed_by_name} (${formData.completed_by_email})`.tr
       const owner = await this.hubspotService.findUserByEmail(formData.completed_by_email);
       if (owner) {
         ownerId = owner.id;
-        console.log(`Found deal owner: ${owner.firstName} ${owner.lastName} (${owner.id})`);
       } else {
-        console.log(`No HubSpot user found for email: ${formData.completed_by_email}`);
       }
     } catch (error) {
       console.error('Failed to find deal owner:', error.message);
@@ -1115,7 +1355,6 @@ Completed By: ${formData.completed_by_name} (${formData.completed_by_email})`.tr
 
     // Use product ID directly from form
     if (formData.course_id && formData.course_id.trim() !== '') {
-      console.log(`Using product ID from form: ${formData.course_id}`);
       dealData.productId = formData.course_id; // This is now the product ID
     }
 
@@ -1197,9 +1436,7 @@ Client Email: ${formData.client_requestor_email_sp}`.trim();
       const owner = await this.hubspotService.findUserByEmail(formData.completed_by_email);
       if (owner) {
         ownerId = owner.id;
-        console.log(`Found deal owner for self-paced: ${owner.firstName} ${owner.lastName} (${owner.id})`);
       } else {
-        console.log(`No HubSpot user found for email: ${formData.completed_by_email}`);
       }
     } catch (error) {
       console.error('Failed to find deal owner for self-paced:', error.message);
@@ -1235,7 +1472,6 @@ Client Email: ${formData.client_requestor_email_sp}`.trim();
 
     // Use product ID directly from form
     if (formData.course_id_sp && formData.course_id_sp.trim() !== '') {
-      console.log(`Using product ID from self-paced form: ${formData.course_id_sp}`);
       dealData.productId = formData.course_id_sp; // This is now the product ID
     }
 

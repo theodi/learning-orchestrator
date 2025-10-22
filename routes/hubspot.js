@@ -16,6 +16,12 @@ router.get('/contacts/search', (req, res) => hubspotController.searchContacts(re
 
 // Get deal by ID
 router.get('/deals/:id', (req, res) => hubspotController.getDeal(req, res));
+// For modal: emails/notes history JSON
+router.get('/deals/:id/history', (req, res) => hubspotController.getDealEmailHistory(req, res));
+// For modal: update stage/closedate
+router.patch('/deals/:id', (req, res) => hubspotController.updateDealFields(req, res));
+// For modal: add note
+router.post('/deals/:id/notes', (req, res) => hubspotController.addDealNote(req, res));
 
 // Get learner enrollment/access matrix for a deal (authenticated)
 router.get('/deals/:id/learner-status', (req, res) => hubspotController.getDealLearnerMatrix(req, res));
@@ -43,6 +49,9 @@ router.get("/products", (req, res) => hubspotController.getProducts(req, res));
 
 // Get deals for product
 router.get("/products/:productId/deals", (req, res) => hubspotController.getProductDeals(req, res));
+
+// Get deals (browse by pipeline)
+router.get("/deals", (req, res) => hubspotController.getDeals(req, res));
 
 // Get courses (products with type "Learning Course")
 router.get("/courses", (req, res) => hubspotController.getCourses(req, res));

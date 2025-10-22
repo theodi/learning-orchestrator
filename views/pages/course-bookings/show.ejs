@@ -356,7 +356,7 @@ $(document).ready(function() {
             const csrfToken = tokenMeta ? tokenMeta.getAttribute('content') : '';
             const resp = await fetch(`/hubspot/deals/${hubspotDealId}/remind-learner`, {
                   method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                  headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                   body: JSON.stringify(payload)
                 });
                 const data = await resp.json();
