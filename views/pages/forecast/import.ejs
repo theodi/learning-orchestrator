@@ -137,18 +137,141 @@
       });
     }
 
+    // CSP-compliant custom validator (replaces AJV to avoid Function() constructor)
     function validateRow(row, schema) {
-      const Ajv = window.ajv7;
-      const ajv = new Ajv(); // Create an instance of Ajv
-      const validate = ajv.compile(schema); // Compile the JSON schema using Ajv
-      const isValid = validate(row); // Validate the row against the compiled schema
-      if (!isValid) {
-        console.error('CSV data validation errors:', validate.errors);
+      const errors = [];
+      
+      // Check required fields
+      if (schema.required) {
+        for (const field of schema.required) {
+          if (!(field in row) || row[field] === null || row[field] === undefined || row[field] === '') {
+            errors.push({
+              instancePath: `/${field}`,
+              schemaPath: `#/required`,
+              keyword: 'required',
+              params: { missingProperty: field },
+              message: `must have required property '${field}'`
+            });
+          }
+        }
       }
-      return isValid;
+      
+      // Validate properties
+      if (schema.properties) {
+        for (const [propName, propSchema] of Object.entries(schema.properties)) {
+          const value = row[propName];
+          
+          // Skip validation if property is not present (unless required)
+          if (value === undefined || value === null || value === '') {
+            continue;
+          }
+          
+          // Type validation
+          if (propSchema.type) {
+            const expectedType = propSchema.type;
+            let actualType = typeof value;
+            
+            // Handle special cases
+            if (expectedType === 'integer' && actualType === 'number') {
+              if (!Number.isInteger(value)) {
+                errors.push({
+                  instancePath: `/${propName}`,
+                  schemaPath: `#/properties/${propName}/type`,
+                  keyword: 'type',
+                  params: { type: 'integer' },
+                  message: `must be integer`
+                });
+                continue;
+              }
+            } else if (expectedType === 'array' && !Array.isArray(value)) {
+              errors.push({
+                instancePath: `/${propName}`,
+                schemaPath: `#/properties/${propName}/type`,
+                keyword: 'type',
+                params: { type: 'array' },
+                message: `must be array`
+              });
+              continue;
+            } else if (expectedType === 'boolean' && actualType !== 'boolean') {
+              errors.push({
+                instancePath: `/${propName}`,
+                schemaPath: `#/properties/${propName}/type`,
+                keyword: 'type',
+                params: { type: 'boolean' },
+                message: `must be boolean`
+              });
+              continue;
+            } else if (expectedType === 'number' && actualType !== 'number') {
+              errors.push({
+                instancePath: `/${propName}`,
+                schemaPath: `#/properties/${propName}/type`,
+                keyword: 'type',
+                params: { type: 'number' },
+                message: `must be number`
+              });
+              continue;
+            } else if (expectedType === 'string' && actualType !== 'string') {
+              errors.push({
+                instancePath: `/${propName}`,
+                schemaPath: `#/properties/${propName}/type`,
+                keyword: 'type',
+                params: { type: 'string' },
+                message: `must be string`
+              });
+              continue;
+            }
+          }
+          
+          // Validate array items if property is an array
+          if (propSchema.type === 'array' && propSchema.items && Array.isArray(value)) {
+            const itemType = propSchema.items.type;
+            for (let i = 0; i < value.length; i++) {
+              const item = value[i];
+              if (itemType === 'integer' && !Number.isInteger(item)) {
+                errors.push({
+                  instancePath: `/${propName}/${i}`,
+                  schemaPath: `#/properties/${propName}/items/type`,
+                  keyword: 'type',
+                  params: { type: 'integer' },
+                  message: `must be integer`
+                });
+              }
+            }
+          }
+          
+          // Validate numeric constraints
+          if ((propSchema.type === 'number' || propSchema.type === 'integer') && typeof value === 'number') {
+            if (propSchema.exclusiveMinimum !== undefined && value <= propSchema.exclusiveMinimum) {
+              errors.push({
+                instancePath: `/${propName}`,
+                schemaPath: `#/properties/${propName}/exclusiveMinimum`,
+                keyword: 'exclusiveMinimum',
+                params: { limit: propSchema.exclusiveMinimum },
+                message: `must be > ${propSchema.exclusiveMinimum}`
+              });
+            }
+            if (propSchema.minimum !== undefined && value < propSchema.minimum) {
+              errors.push({
+                instancePath: `/${propName}`,
+                schemaPath: `#/properties/${propName}/minimum`,
+                keyword: 'minimum',
+                params: { limit: propSchema.minimum },
+                message: `must be >= ${propSchema.minimum}`
+              });
+            }
+          }
+        }
+      }
+      
+      if (errors.length > 0) {
+        console.error('CSV data validation errors:', errors);
+        return false;
+      }
+      
+      return true;
     }
 
-    // Function to validate CSV data against the schema using Ajv
+    // Function to validate CSV data against the schema using custom CSP-compliant validator
     async function validateCSV(csvData, schemaType) {
       try {
         // Fetch the schema file based on the schemaType

@@ -889,6 +889,23 @@
         dealsDT = $table.DataTable({
           order: [[2, 'desc']],
           pageLength: 25,
+          dom: 'Bfrtip',
+          buttons: [
+            {
+              extend: 'csv',
+              text: 'Export CSV',
+              className: 'btn btn-primary',
+              exportOptions: {
+                columns: [0, 1, 2, 3, 4],
+                format: {
+                  body: function(data, row, column, node) {
+                    // Strip HTML tags for CSV export
+                    return $('<div>').html(data).text();
+                  }
+                }
+              }
+            }
+          ],
           data,
           columns: [
             { title: 'Deal Name' },

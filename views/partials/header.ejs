@@ -29,14 +29,34 @@
 <script src="/lib/DataTables/datatables.min.js"></script>
 <link href="/lib/select2.min.css" rel="stylesheet" />
 <script src="/lib/select2.min.js"></script>
+<script>
+	// Event listeners to replace inline handlers (CSP compliance)
+	$(document).ready(function() {
+		// Close overlay button
+		$('#closeOverlayBtn').on('click', function() {
+			$('#contentOverlay').hide();
+		});
+		
+		// Logout link
+		$('#logout_link').on('click', function(e) {
+			e.preventDefault();
+			$('#logout_form').submit();
+		});
+	});
+	
+	// Define closeOverlay function for backward compatibility (if called from elsewhere)
+	function closeOverlay() {
+		$('#contentOverlay').hide();
+	}
+</script>
 </head> 
 <body>
 	<div id="contentOverlay" class="overlay">
 		<div id="overlay-content" class="overlay-content" style="width: 90%; margin: auto; margin-top: 20px; max-height: 90vh;">
-			<span class="close-btn" onclick="closeOverlay()" style="right: 40px;
+			<span class="close-btn" id="closeOverlayBtn" style="right: 40px;
 			top: 20px;
 			font-size: 3rem;
-			font-weight: normal;">&times;</span>
+			font-weight: normal; cursor: pointer;">&times;</span>
 			<div id="overlay-content-inner" style="overflow-y: scroll; min-width: 100%;"></div>
 		</div>
 	</div>
@@ -125,7 +145,7 @@
 					<li>
 						<a style="padding: 0;" class="toggle-link <% if (page.link === '/auth/profile') { %>selected<% } %>" href="/auth/profile"><%= user ? (user.displayName || (user.first_name && user.last_name ? user.first_name + ' ' + user.last_name : user.email)) : 'Guest' %></a>
 						<form style="display: inline-flex;" id="logout_form" action="/auth/logout" method="post">
-							<span>(<a href="javascript:;" onclick="document.getElementById('logout_form').submit();">Logout</a>)</span>
+							<span>(<a href="javascript:;" id="logout_link">Logout</a>)</span>
 						</form>
 					</li>
 				<% } else { %>

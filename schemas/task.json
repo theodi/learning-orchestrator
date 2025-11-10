@@ -76,5 +76,5 @@
       "type": "integer"
     }
   },
-  "required": ["title","description"]
+  "required": ["title"]
 }

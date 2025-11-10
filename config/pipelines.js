@@ -2,7 +2,6 @@
 // List pipeline labels to exclude from UI and selection
 
 export const IGNORED_PIPELINE_LABELS = [
-  'ODI Learning | Course Sales 2024',
   'ODI Learning | Course Sales 2023',
   'ODI Learning | Course Sales 2022',
   'ODI Learning | Course Sales 2021',
