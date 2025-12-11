@@ -1,6 +1,6 @@
 {
   "name": "learning-orchestrator",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "description": "ODI Learning Orchestrator: connects HubSpot, Forecast, Moodle, and Google Calendar for bookings, enrollments, and scheduling.",
   "main": "index.js",
   "type": "module",
