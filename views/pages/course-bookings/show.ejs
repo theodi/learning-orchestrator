@@ -217,7 +217,7 @@ $(document).ready(function() {
           );
           if (includesSelfPaced) {
             $('#selfPacedSection').show();
-            loadLearnerMatrix(dealId);
+            loadLearnerListAndStatuses(dealId);
           }
           showContent('hubspot');
         } else {
@@ -290,122 +290,178 @@ $(document).ready(function() {
     $(`#${section}Data`).html(`<p class="text-muted">${message}</p>`);
   }
 
-  // Self-paced learner status section (vertical layout)
-  function loadLearnerMatrix(dealId) {
+  // Self-paced learner status section (staged, per-learner requests)
+  function loadLearnerListAndStatuses(dealId) {
     $('#spLearnersLoading').show();
     $('#spLearnersContent').hide();
-    fetch(`/hubspot/deals/${dealId}/learner-status`)
+    $('#spLearnersError').hide();
+
+    // 1) Fetch learner list from HubSpot (no Moodle lookups)
+    fetch(`/hubspot/deals/${dealId}/learners`)
       .then(r => r.json())
       .then(payload => {
-        if (!payload.success) throw new Error(payload.message || 'Failed to fetch learner status');
-        const learners = payload.data.learners || [];
+        if (!payload.success) throw new Error(payload.message || 'Failed to fetch learners');
+        const learners = payload.data || [];
+        if (!learners.length) {
+          $('#spLearnersLoading').hide();
+          $('#spLearnersError').text('No learners found on this booking.').show();
+          return;
+        }
 
         const container = $('#spLearnersCards');
         container.empty();
-        learners.forEach(l => {
-          const card = $(
-            '<div class="card mb-3">\
-              <div class="card-header d-flex justify-content-between align-items-center">\
-                <div>\
-                  <h5 class="mb-0 sp-learner-name">' + (l.name || 'Learner') + '</h5>\
-                  <small class="text-muted sp-learner-email">' + l.email + '</small>\
-                </div>\
-                <div class="sp-learner-actions"></div>\
-              </div>\
-              <div class="card-body">\
-                <div class="table-responsive">\
-                  <table class="table table-sm table-striped">\
-                    <thead>\
-                      <tr>\
-                        <th>Course</th>\
-                        <th>Enrolled</th>\
-                        <th>Accessed</th>\
-                      </tr>\
-                    </thead>\
-                    <tbody></tbody>\
-                  </table>\
-                </div>\
-              </div>\
-            </div>'
-          );
-          // Insert Moodle login info under name/email
-          const login = l.login || {};
-          const lastAccessStr = login.last_access ? new Date(login.last_access).toLocaleString('en-GB') : '-';
-          const loginInfoEl = $('<div class="small text-muted mt-1"/>')
-            .text(`Has logged in: ${login.ever_logged_in ? 'Yes' : 'No'}  ·  Last access: ${lastAccessStr}`);
-          card.find('.sp-learner-email').after(loginInfoEl);
-          // Determine if any course needs attention (not enrolled or not accessed)
-          const needsEmail = (l.courses || []).some(c => !(!!c.enrolled && !!c.accessed));
-          if (needsEmail) {
-            const headerBtn = $('<button class="btn btn-sm btn-outline-secondary" type="button">Email instuctions to learner</button>');
-            headerBtn.on('click', async function() {
-              try {
-                headerBtn.prop('disabled', true).text('Sending...');
-                const payload = {
-                  deal_id: hubspotDealId,
-                  contact_email: l.email,
-                  learner_name: l.name || 'Learner',
-                  courses: (l.courses || []).map(c => ({
-                    course_id: c.course_id,
-                    course_name: c.course_name,
-                    enrolled: !!c.enrolled,
-                    accessed: !!c.accessed
-                  }))
-                };
-            const tokenMeta = document.querySelector('meta[name="csrf-token"]');
-            const csrfToken = tokenMeta ? tokenMeta.getAttribute('content') : '';
-            const resp = await fetch(`/hubspot/deals/${hubspotDealId}/remind-learner`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                  body: JSON.stringify(payload)
-                });
-                const data = await resp.json();
-                if (!resp.ok || !data.success) {
-                  throw new Error(data.message || 'Failed to send');
-                }
-                
-                // Update button state
-                const emailType = data.data?.emailType || 'email';
-                const subject = data.data?.subject || '';
-                headerBtn.removeClass('btn-outline-secondary').addClass('btn-success')
-                  .text(`${emailType === 'welcome' ? 'Welcome' : 'Reminder'} sent`);
-                
-                // Refresh email history for this specific learner
-                refreshLearnerEmailHistory(hubspotDealId, l.email);
-                
-              } catch (err) {
-                alert('Failed to send email: ' + err.message);
-                headerBtn.prop('disabled', false).text('Email instructions to learner');
-              }
-            });
-            card.find('.sp-learner-actions').append(headerBtn);
-          } else {
-            card.find('.sp-learner-actions').html('<span class="text-muted">All good</span>');
-          }
-          const tbody = card.find('tbody');
-          (l.courses || []).forEach(c => {
-            const enrolled = !!c.enrolled;
-            const accessed = !!c.accessed;
-            const tr = $('<tr/>');
-            tr.append(`<td>${c.course_name || ('Course #' + c.course_id)}</td>`);
-            tr.append(`<td>${enrolled ? '<span class="text-success">Yes</span>' : '<span class="text-muted">No</span>'}</td>`);
-            tr.append(`<td>${accessed ? '<span class="text-success">Yes</span>' : '<span class="text-muted">No</span>'}</td>`);
-            tbody.append(tr);
-          });
-          container.append(card);
-        });
+
+        // Render learner cards with placeholders; load statuses in a small concurrency queue
+        const cards = learners.map(l => renderLearnerCard(container, l));
 
         $('#spLearnersLoading').hide();
         $('#spLearnersContent').show();
 
-        // Fetch and render email history per learner
+        // Fetch email history in parallel (non-blocking)
         loadLearnerEmailHistory(dealId);
+
+        // Process status lookups with limited concurrency to avoid hammering Moodle
+        const queue = learners.map((l, idx) => ({ learner: l, card: cards[idx] }));
+        processLearnerStatusQueue(dealId, queue, 3); // at most 3 concurrent requests
       })
       .catch(err => {
         $('#spLearnersLoading').hide();
         $('#spLearnersError').text(err.message).show();
         $('#spLearnersContent').show();
       });
+  }
+
+  // Render a learner card shell and return the jQuery element
+  function renderLearnerCard(container, learner) {
+    const card = $(
+      '<div class="card mb-3">\
+        <div class="card-header d-flex justify-content-between align-items-center">\
+          <div>\
+            <h5 class="mb-0 sp-learner-name">' + (learner.name || `${learner.first_name || ''} ${learner.last_name || ''}`.trim() || 'Learner') + '</h5>\
+            <small class="text-muted sp-learner-email">' + learner.email + '</small>\
+            <div class="small text-muted mt-1 sp-login-placeholder">Loading login info...</div>\
+          </div>\
+          <div class="sp-learner-actions text-end">\
+            <span class="text-muted">Loading...</span>\
+          </div>\
+        </div>\
+        <div class="card-body">\
+          <div class="table-responsive">\
+            <table class="table table-sm table-striped mb-0">\
+              <thead>\
+                <tr>\
+                  <th>Course</th>\
+                  <th>Enrolled</th>\
+                  <th>Accessed</th>\
+                </tr>\
+              </thead>\
+              <tbody class="sp-courses-body">\
+                <tr><td colspan="3" class="text-muted">Loading status...</td></tr>\
+              </tbody>\
+            </table>\
+          </div>\
+        </div>\
+      </div>'
+    );
+    container.append(card);
+    return card;
+  }
+
+  // Process learner status requests with limited concurrency
+  function processLearnerStatusQueue(dealId, queue, concurrency = 3) {
+    let active = 0;
+
+    const next = () => {
+      if (!queue.length) return;
+      if (active >= concurrency) return;
+      const item = queue.shift();
+      active += 1;
+      loadSingleLearnerStatus(dealId, item.learner, item.card)
+        .catch(err => {
+          item.card.find('.sp-courses-body').html(`<tr><td colspan="3" class="text-danger">Failed: ${err.message}</td></tr>`);
+        })
+        .finally(() => {
+          active -= 1;
+          next();
+        });
+      next();
+    };
+
+    next();
+  }
+
+  // Fetch status for a single learner and update its card
+  async function loadSingleLearnerStatus(dealId, learner, card) {
+    const resp = await fetch(`/hubspot/deals/${dealId}/learner-status?email=${encodeURIComponent(learner.email)}`);
+    const payload = await resp.json();
+    if (!resp.ok || !payload.success) {
+      throw new Error(payload.message || 'Failed to fetch learner status');
+    }
+    const l = (payload.data.learners || [])[0];
+    if (!l) throw new Error('Learner not found in response');
+
+    // Update login info
+    const login = l.login || {};
+    const lastAccessStr = login.last_access ? new Date(login.last_access).toLocaleString('en-GB') : '-';
+    card.find('.sp-login-placeholder').text(`Has logged in: ${login.ever_logged_in ? 'Yes' : 'No'}  ·  Last access: ${lastAccessStr}`);
+
+    // Courses table
+    const tbody = card.find('.sp-courses-body');
+    tbody.empty();
+    (l.courses || []).forEach(c => {
+      const enrolled = !!c.enrolled;
+      const accessed = !!c.accessed;
+      const tr = $('<tr/>');
+      tr.append(`<td>${c.course_name || ('Course #' + c.course_id)}</td>`);
+      tr.append(`<td>${enrolled ? '<span class="text-success">Yes</span>' : '<span class="text-muted">No</span>'}</td>`);
+      tr.append(`<td>${accessed ? '<span class="text-success">Yes</span>' : '<span class="text-muted">No</span>'}</td>`);
+      tbody.append(tr);
+    });
+
+    // Action button
+    const needsEmail = (l.courses || []).some(c => !(!!c.enrolled && !!c.accessed));
+    const actions = card.find('.sp-learner-actions');
+    actions.empty();
+    if (needsEmail) {
+      const headerBtn = $('<button class="btn btn-sm btn-outline-secondary" type="button">Email instructions to learner</button>');
+      headerBtn.on('click', async function() {
+        try {
+          headerBtn.prop('disabled', true).text('Sending...');
+          const payload = {
+            deal_id: dealId,
+            contact_email: l.email,
+            learner_name: l.name || 'Learner',
+            courses: (l.courses || []).map(c => ({
+              course_id: c.course_id,
+              course_name: c.course_name,
+              enrolled: !!c.enrolled,
+              accessed: !!c.accessed
+            }))
+          };
+          const tokenMeta = document.querySelector('meta[name="csrf-token"]');
+          const csrfToken = tokenMeta ? tokenMeta.getAttribute('content') : '';
+          const respSend = await fetch(`/hubspot/deals/${dealId}/remind-learner`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify(payload)
+          });
+          const dataSend = await respSend.json();
+          if (!respSend.ok || !dataSend.success) {
+            throw new Error(dataSend.message || 'Failed to send');
+          }
+          const emailType = dataSend.data?.emailType || 'email';
+          headerBtn.removeClass('btn-outline-secondary').addClass('btn-success')
+            .text(`${emailType === 'welcome' ? 'Welcome' : 'Reminder'} sent`);
+          refreshLearnerEmailHistory(dealId, l.email);
+        } catch (err) {
+          alert('Failed to send email: ' + err.message);
+          headerBtn.prop('disabled', false).text('Email instructions to learner');
+        }
+      });
+      actions.append(headerBtn);
+    } else {
+      actions.html('<span class="text-muted">All good</span>');
+    }
   }
 
   function loadLearnerEmailHistory(dealId) {

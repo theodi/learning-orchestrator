@@ -1,10 +1,49 @@
 import { MoodleService } from './moodleService.js';
 import Enrollment from '../models/Enrollment.js';
 import crypto from 'crypto';
+import { DEBUG_MODE } from '../config/constants.js';
 
 export class EnrollmentService {
   constructor() {
     this.moodleService = new MoodleService();
+    // In-memory cache for course enrolments to reduce repeated Moodle calls across requests
+    this.courseEnrollmentsCache = new Map(); // key: courseId -> { ts, data }
+    // Promise deduplication: if multiple requests ask for the same course at once, they share the same fetch promise
+    this.courseEnrollmentsPending = new Map(); // key: courseId -> Promise
+  }
+
+  // Fetch course enrolments with a short TTL cache (default 5 minutes) and promise deduplication
+  async getCourseEnrollmentsCached(courseId, ttlMs = 5 * 60 * 1000) {
+    const debug = DEBUG_MODE.ENABLED;
+    const debugLog = (...args) => { if (debug) console.log('[EnrollmentService.getCourseEnrollmentsCached]', ...args); };
+    const key = String(courseId);
+    const now = Date.now();
+    const cached = this.courseEnrollmentsCache.get(key);
+    if (cached && (now - cached.ts) < ttlMs) {
+      debugLog('cache hit', { courseId, count: Array.isArray(cached.data) ? cached.data.length : 0 });
+      return cached.data;
+    }
+    // Check if there's already a fetch in progress for this course
+    const pending = this.courseEnrollmentsPending.get(key);
+    if (pending) {
+      debugLog('deduplication: waiting for in-progress fetch', { courseId });
+      return await pending;
+    }
+    // Start a new fetch and store the promise so concurrent requests can share it
+    const fetchPromise = (async () => {
+      try {
+        const enrolments = await this.moodleService.getCourseEnrolments(parseInt(courseId));
+        const normalized = Array.isArray(enrolments) ? enrolments : [];
+        this.courseEnrollmentsCache.set(key, { ts: Date.now(), data: normalized });
+        debugLog('cache miss -> fetched', { courseId, count: normalized.length });
+        return normalized;
+      } finally {
+        // Remove the pending promise once done (success or failure)
+        this.courseEnrollmentsPending.delete(key);
+      }
+    })();
+    this.courseEnrollmentsPending.set(key, fetchPromise);
+    return await fetchPromise;
   }
 
   // Aggregate Moodle users from cached course enrollments
@@ -45,15 +84,23 @@ export class EnrollmentService {
   }
 
   // Check enrollment/access status for a user in a course
-  async getUserCourseStatus(courseId, email, durationMonths = 12) {
+  // opts allows caller to pass preloaded course enrollments and caches to cut down on repeated Moodle calls
+  async getUserCourseStatus(courseId, email, durationMonths = 12, opts = {}) {
     try {
       const normalizedEmail = (email || '').toLowerCase().trim();
+      const debug = DEBUG_MODE.ENABLED;
+      const debugLog = (...args) => { if (debug) console.log('[enrollmentService.getUserCourseStatus]', ...args); };
       if (!courseId || !normalizedEmail) {
         throw new Error('course_id and email are required');
       }
 
       // Fetch Moodle enrollments and attempt to locate user
-      const moodleEnrollments = await this.moodleService.getCourseEnrolments(parseInt(courseId));
+      const moodleEnrollments = Array.isArray(opts.courseEnrollments)
+        ? opts.courseEnrollments
+        : await this.getCourseEnrollmentsCached(parseInt(courseId));
+      if (!Array.isArray(opts.courseEnrollments)) {
+        debugLog('course enrolments fetched', { courseId, count: Array.isArray(moodleEnrollments) ? moodleEnrollments.length : 0, sample: Array.isArray(moodleEnrollments) ? moodleEnrollments.slice(0, 3) : null });
+      }
 
       // Match by email primarily; fallback to Moodle user lookup by email
       let moodleUser = null;
@@ -65,8 +112,18 @@ export class EnrollmentService {
       let moodleUserId = moodleUser ? moodleUser.id : null;
       if (!moodleUserId) {
         try {
-          const lookedUp = await this.moodleService.lookupUserByEmail(normalizedEmail);
-          moodleUserId = lookedUp ? lookedUp.id : null;
+          if (opts.userLookupCache && opts.userLookupCache.has(normalizedEmail)) {
+            const cached = opts.userLookupCache.get(normalizedEmail);
+            moodleUserId = cached ? cached.id : null;
+            debugLog('user lookup cache hit', { email: normalizedEmail, moodleUserId });
+          } else {
+            const lookedUp = await this.moodleService.lookupUserByEmail(normalizedEmail);
+            moodleUserId = lookedUp ? lookedUp.id : null;
+            if (opts.userLookupCache) {
+              opts.userLookupCache.set(normalizedEmail, lookedUp || null);
+            }
+            debugLog('lookupUserByEmail', { email: normalizedEmail, moodleUserId });
+          }
         } catch (_) {
           moodleUserId = null;
         }
@@ -76,10 +133,32 @@ export class EnrollmentService {
       let enrolled = Boolean(moodleUser);
 
       // Prefer authoritative per-user enrollment details from Moodle
+      // If the enrolment list already includes last access, use it and skip detail lookup
       let hasMoodleAccess = false;
+      let lastAccessTs = 0;
+      if (moodleUser) {
+        lastAccessTs = parseInt(moodleUser.lastcourseaccess || 0, 10);
+        hasMoodleAccess = lastAccessTs > 0;
+        if (hasMoodleAccess) {
+          debugLog('access from enrolment list', { email: normalizedEmail, courseId, lastAccessTs });
+        }
+      }
+
       try {
-        if (moodleUserId) {
-          const details = await this.moodleService.getUserEnrollmentDetails(parseInt(moodleUserId, 10), parseInt(courseId, 10));
+        if (moodleUserId && !hasMoodleAccess) {
+          const cacheKey = `${moodleUserId}:${parseInt(courseId, 10)}`;
+          let details = null;
+          if (opts.enrollmentDetailsCache && opts.enrollmentDetailsCache.has(cacheKey)) {
+            details = opts.enrollmentDetailsCache.get(cacheKey);
+            debugLog('enrollment details cache hit', { cacheKey, hasDetails: Boolean(details) });
+          } else {
+            details = await this.moodleService.getUserEnrollmentDetails(parseInt(moodleUserId, 10), parseInt(courseId, 10));
+            if (opts.enrollmentDetailsCache) {
+              opts.enrollmentDetailsCache.set(cacheKey, details || null);
+            }
+            debugLog('getUserEnrollmentDetails', { cacheKey, hasDetails: Boolean(details) });
+          }
+
           if (details) {
             enrolled = true; // details present implies enrollment in course
             // Accessed ONLY if lastCourseAccess is present
@@ -103,13 +182,21 @@ export class EnrollmentService {
       // If not enrolled, attempt to auto-enrol the user directly in Moodle using their email
       if (!enrolled) {
         try {
-          const lookedUp = await this.moodleService.lookupUserByEmail(normalizedEmail);
+          const lookedUp = opts.userLookupCache && opts.userLookupCache.has(normalizedEmail)
+            ? opts.userLookupCache.get(normalizedEmail)
+            : await this.moodleService.lookupUserByEmail(normalizedEmail);
+          if (opts.userLookupCache && !opts.userLookupCache.has(normalizedEmail)) {
+            opts.userLookupCache.set(normalizedEmail, lookedUp || null);
+          }
+          debugLog('auto-enrol lookup', { email: normalizedEmail, moodleUserId: lookedUp?.id });
           if (lookedUp && lookedUp.id) {
             // Enrol using provided duration (months)
             const enrolResult = await this.moodleService.enrolUserInCourse(lookedUp.id, parseInt(courseId, 10), parseInt(durationMonths, 10));
+            debugLog('enrolUserInCourse', { courseId: parseInt(courseId, 10), moodleUserId: lookedUp.id, success: enrolResult?.success });
             if (enrolResult && enrolResult.success) {
               // Confirm enrolment and access
               const details = await this.moodleService.getUserEnrollmentDetails(lookedUp.id, parseInt(courseId, 10));
+              debugLog('post-enrol getUserEnrollmentDetails', { hasDetails: Boolean(details) });
               result.enrolled = Boolean(details);
               result.accessed = Boolean(details && details.lastCourseAccess);
               return result;

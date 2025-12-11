@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "nodemon index.js",
-    "debug": "EMAIL_DEBUG=true nodemon index.js",
+    "debug": "DEBUG_MODE=true NODE_ENV=development EMAIL_DEBUG=true nodemon index.js",
     "debug:test": "node test-debug-mode.js",
     "debug:test:simple": "node debug-test-simple.js",
     "test": "echo \"Error: no test specified\" && exit 1",

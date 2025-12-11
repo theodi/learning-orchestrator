@@ -19,6 +19,9 @@ export class HubSpotController extends BaseController {
     this.enrollmentService = new EnrollmentService();
     this.emailService = new EmailService();
     this.moodleService = new MoodleService();
+    // In-memory short-term caches to reduce repeated HubSpot lookups per deal
+    this.lineItemsCache = new Map();   // key: dealId -> { ts, data }
+    this.dealLearnersCache = new Map(); // key: `${dealId}:Learner` -> { ts, data }
   }
 
   // In-memory queue for reminder jobs by deal
@@ -168,9 +171,23 @@ export class HubSpotController extends BaseController {
   async getDealLearnerMatrix(req, res) {
     try {
       const { id } = req.params;
+      const singleEmail = (req.query.email || '').toString().trim().toLowerCase();
+      const debug = DEBUG_MODE.ENABLED;
+      const debugLog = (...args) => { if (debug) console.log('[getDealLearnerMatrix]', ...args); };
 
-      // Fetch line items (to get moodle_course_id and term months)
-      const lineItems = await this.hubspotService.fetchDealLineItemsWithProducts(id);
+      // Fetch line items (to get moodle_course_id and term months) with short TTL cache
+      const lineItemsTtl = 5 * 60 * 1000; // 5 minutes
+      const now = Date.now();
+      const cachedLineItems = this.lineItemsCache.get(String(id));
+      let lineItems = null;
+      if (cachedLineItems && (now - cachedLineItems.ts) < lineItemsTtl) {
+        lineItems = cachedLineItems.data;
+        debugLog('line items cached hit', { count: Array.isArray(lineItems) ? lineItems.length : 0 });
+      } else {
+        lineItems = await this.hubspotService.fetchDealLineItemsWithProducts(id);
+        this.lineItemsCache.set(String(id), { ts: now, data: lineItems });
+        debugLog('line items fetched', { count: Array.isArray(lineItems) ? lineItems.length : 0 });
+      }
       const courseEntries = lineItems
         .map(li => ({
           course_id: parseInt(li.moodle_course_id),
@@ -179,13 +196,56 @@ export class HubSpotController extends BaseController {
         }))
         .filter(e => Number.isFinite(e.course_id));
 
-      // Fetch contacts labeled as Learner
-      const learners = await this.hubspotService.fetchDealContactsByLabel(id, 'Learner');
-      const emails = learners.map(l => l.email).filter(Boolean);
+      // Fetch contacts labeled as Learner with short TTL cache
+      const learnersTtl = 5 * 60 * 1000; // 5 minutes
+      const learnersCacheKey = `${id}:Learner`;
+      const cachedLearners = this.dealLearnersCache.get(learnersCacheKey);
+      let learners = null;
+      if (cachedLearners && (now - cachedLearners.ts) < learnersTtl) {
+        learners = cachedLearners.data;
+        debugLog('learners cached hit', { count: Array.isArray(learners) ? learners.length : 0 });
+      } else {
+        learners = await this.hubspotService.fetchDealContactsByLabel(id, 'Learner');
+        this.dealLearnersCache.set(learnersCacheKey, { ts: now, data: learners });
+        debugLog('learners fetched', { count: Array.isArray(learners) ? learners.length : 0 });
+      }
+      const emails = learners
+        .map(l => l.email)
+        .filter(Boolean)
+        .map(e => e.toLowerCase());
+
+      // If a specific learner email is requested, only process that learner to reduce workload
+      const targetEmails = singleEmail ? emails.filter(e => e === singleEmail) : emails;
+
+      // Caches to avoid repeated Moodle calls when many learners/courses exist
+      const courseEnrollmentsCache = new Map(); // courseId -> enrolments array (local per-request cache)
+      const userLookupCache = new Map(); // email -> moodle user (or null)
+      const enrollmentDetailsCache = new Map(); // `${userId}:courseId` -> details (or null)
+
+      const getCourseEnrollmentsFor = async (courseId) => {
+        const cacheKey = String(courseId);
+        // Check local per-request cache first
+        if (courseEnrollmentsCache.has(cacheKey)) {
+          return courseEnrollmentsCache.get(cacheKey);
+        }
+        // Use enrollmentService cached version (with promise deduplication across requests)
+        try {
+          const enrolments = await this.enrollmentService.getCourseEnrollmentsCached(parseInt(courseId));
+          const normalized = Array.isArray(enrolments) ? enrolments : [];
+          // Store in local cache too for this request
+          courseEnrollmentsCache.set(cacheKey, normalized);
+          debugLog('getCourseEnrolments', { courseId, count: normalized.length });
+          return normalized;
+        } catch (err) {
+          debugLog('getCourseEnrolments error', { courseId, error: err?.message });
+          courseEnrollmentsCache.set(cacheKey, []);
+          return [];
+        }
+      };
 
       // Build matrix: rows=learners, cols=courses
       const results = [];
-      for (const email of emails) {
+      for (const email of targetEmails) {
         const learner = learners.find(l => l.email === email);
         const firstName = learner?.first_name || '';
         const lastName = learner?.last_name || '';
@@ -195,14 +255,17 @@ export class HubSpotController extends BaseController {
         try {
           if (this.moodleService && this.moodleService.ensureUser) {
             moodleUserId = await this.moodleService.ensureUser({ email, firstName, lastName });
+            debugLog('ensureUser', { email, moodleUserId });
           } else {
             const existing = await this.moodleService.lookupUserByEmail(email);
             moodleUserId = existing?.id || null;
+            debugLog('lookupUserByEmail (fallback ensure)', { email, moodleUserId });
           }
         } catch (error) {
           try {
             const existing = await this.moodleService.lookupUserByEmail(email);
             moodleUserId = existing?.id || null;
+            debugLog('lookupUserByEmail (error path)', { email, moodleUserId, error: error?.message });
           } catch (lookupError) {
             
           }
@@ -211,17 +274,30 @@ export class HubSpotController extends BaseController {
         let loginInfo = { exists: false, ever_logged_in: false, last_access: null };
         try {
           loginInfo = await this.moodleService.getUserLoginInfoByEmail(email);
+          debugLog('getUserLoginInfoByEmail', { email, last_access: loginInfo?.last_access });
         } catch (_) {}
         const row = { email, name: fullName, login: loginInfo, courses: [] };
         for (const entry of courseEntries) {
           const cid = entry.course_id;
           const termMonths = Number.isFinite(entry.term_months) && entry.term_months > 0 ? entry.term_months : 12;
           try {
-            let status = await this.enrollmentService.getUserCourseStatus(cid, email, termMonths);
+            const courseEnrollments = await getCourseEnrollmentsFor(cid);
+            let status = await this.enrollmentService.getUserCourseStatus(cid, email, termMonths, {
+              courseEnrollments,
+              userLookupCache,
+              enrollmentDetailsCache
+            });
+            debugLog('getUserCourseStatus', { email, courseId: cid, enrolled: status?.enrolled, accessed: status?.accessed });
             if (!status?.enrolled && moodleUserId) {
               try {
                 await this.moodleService.enrolUserInCourse(moodleUserId, cid, termMonths);
-                status = await this.enrollmentService.getUserCourseStatus(cid, email, termMonths);
+                debugLog('enrolUserInCourse', { email, moodleUserId, courseId: cid });
+                status = await this.enrollmentService.getUserCourseStatus(cid, email, termMonths, {
+                  courseEnrollments,
+                  userLookupCache,
+                  enrollmentDetailsCache
+                });
+                debugLog('post-enrol getUserCourseStatus', { email, courseId: cid, enrolled: status?.enrolled, accessed: status?.accessed });
               } catch (enrollError) {
                 
               }
@@ -263,6 +339,39 @@ export class HubSpotController extends BaseController {
       return this.sendSuccess(res, history, 'Email history');
     } catch (error) {
       return this.sendError(res, error.message || 'Failed to fetch email history');
+    }
+  }
+
+  // Lightweight learner list (no Moodle lookups) for a deal
+  async getDealLearners(req, res) {
+    try {
+      const { id } = req.params;
+      const learnersTtl = 5 * 60 * 1000; // 5 minutes
+      const now = Date.now();
+      const cacheKey = `${id}:Learner`;
+      const cachedLearners = this.dealLearnersCache.get(cacheKey);
+      let learners = null;
+      if (cachedLearners && (now - cachedLearners.ts) < learnersTtl) {
+        learners = cachedLearners.data;
+      } else {
+        learners = await this.hubspotService.fetchDealContactsByLabel(id, 'Learner');
+        this.dealLearnersCache.set(cacheKey, { ts: now, data: learners });
+      }
+      const result = (learners || []).map(l => ({
+        email: l.email,
+        first_name: l.first_name || l.firstname || '',
+        last_name: l.last_name || l.lastname || '',
+        name: l.name || `${l.first_name || ''} ${l.last_name || ''}`.trim()
+      })).filter(l => l.email);
+
+      const acceptHeader = (req.get('accept') || '').toLowerCase();
+      if (acceptHeader.includes('application/json')) {
+        return this.sendSuccess(res, result, 'Learners for deal');
+      }
+      // Default to JSON for this endpoint
+      return this.sendSuccess(res, result, 'Learners for deal');
+    } catch (error) {
+      return this.sendError(res, error.message || 'Failed to fetch learners for deal');
     }
   }
 
@@ -323,46 +432,18 @@ export class HubSpotController extends BaseController {
       const debugMode = DEBUG_MODE.EMAIL_DEBUG || 
                        String(req.query.debug || req.body?.debug || '').toLowerCase() === 'true';
 
-      // Optional: single learner mode (HubSpot workflow per enrolled contact)
+      // Require single learner mode to avoid bulk spam: must supply contact_email/email
       const contactEmail = (req.body?.contact_email || req.body?.email || req.query?.contact_email || req.query?.email || '').toString().trim();
-      if (contactEmail) {
-        try {
-          const result = await this.sendReminderForSingleLearner(deal_id, contactEmail, debugMode);
-          return this.sendSuccess(res, result, debugMode ? 'Debug: Reminder would be processed for learner' : 'Reminder processed for learner');
-        } catch (err) {
-          return this.sendError(res, err?.message || 'Failed to send learner reminder');
-        }
+      if (!contactEmail) {
+        return this.sendError(res, 'contact_email (or email) is required for deal-send-reminders; bulk mode is disabled to avoid spam', HTTP_STATUS.BAD_REQUEST);
       }
 
-      // For debug mode, process immediately and return results
-      if (debugMode) {
-        try {
-          const result = await this.processDealLearnerRemindersInternal(deal_id, true);
-          return this.sendSuccess(res, result, 'Debug: Email processing simulation completed');
-        } catch (err) {
-          return this.sendError(res, err?.message || 'Failed to process debug reminders');
-        }
+      try {
+        const result = await this.sendReminderForSingleLearner(deal_id, contactEmail, debugMode);
+        return this.sendSuccess(res, result, debugMode ? 'Debug: Reminder would be processed for learner' : 'Reminder processed for learner');
+      } catch (err) {
+        return this.sendError(res, err?.message || 'Failed to send learner reminder');
       }
-
-      // Queue: if a job exists and running, return 202; else enqueue
-      const existing = this.getReminderJob(deal_id);
-      if (existing && (existing.status === 'running' || existing.status === 'queued')) {
-        return this.sendSuccess(res, { deal_id, job: existing }, 'Reminder job in progress', HTTP_STATUS.ACCEPTED);
-      }
-
-      this.setReminderJob(deal_id, { status: 'queued', startedAt: new Date().toISOString(), finishedAt: null, summary: null, error: null });
-
-      setImmediate(async () => {
-        this.setReminderJob(deal_id, { status: 'running' });
-        try {
-          const result = await this.processDealLearnerRemindersInternal(deal_id, false);
-          this.setReminderJob(deal_id, { status: 'completed', finishedAt: new Date().toISOString(), summary: result?.summary || null });
-        } catch (err) {
-          this.setReminderJob(deal_id, { status: 'failed', finishedAt: new Date().toISOString(), error: err?.message || String(err) });
-        }
-      });
-
-      return this.sendSuccess(res, { deal_id, job: this.getReminderJob(deal_id) }, 'Reminder job queued', HTTP_STATUS.ACCEPTED);
     } catch (error) {
       return this.sendError(res, error.message || 'Failed to queue deal reminders');
     }

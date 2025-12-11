@@ -25,6 +25,8 @@ router.post('/deals/:id/notes', (req, res) => hubspotController.addDealNote(req,
 
 // Get learner enrollment/access matrix for a deal (authenticated)
 router.get('/deals/:id/learner-status', (req, res) => hubspotController.getDealLearnerMatrix(req, res));
+// Lightweight learner list
+router.get('/deals/:id/learners', (req, res) => hubspotController.getDealLearners(req, res));
 
 // Send learner reminder email
 router.post('/deals/:id/remind-learner', (req, res) => hubspotController.sendLearnerReminder(req, res));
