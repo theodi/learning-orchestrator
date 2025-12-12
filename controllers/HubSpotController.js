@@ -428,6 +428,11 @@ export class HubSpotController extends BaseController {
         return this.sendError(res, 'Missing deal_id', HTTP_STATUS.BAD_REQUEST);
       }
 
+      // Short-circuit: do not send emails for this specific deal; return OK
+      if (String(deal_id) === '51639991127') {
+        return this.sendSuccess(res, { deal_id }, 'No-op: reminders suppressed for deal');
+      }
+
       // Check for debug mode
       const debugMode = DEBUG_MODE.EMAIL_DEBUG || 
                        String(req.query.debug || req.body?.debug || '').toLowerCase() === 'true';
