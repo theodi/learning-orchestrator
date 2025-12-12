@@ -428,6 +428,8 @@ export class HubSpotController extends BaseController {
         return this.sendError(res, 'Missing deal_id', HTTP_STATUS.BAD_REQUEST);
       }
 
+      console.log('deal_id', deal_id);
+
       // Short-circuit: do not send emails for this specific deal; return OK
       if (String(deal_id) === '51639991127') {
         return this.sendSuccess(res, { deal_id }, 'No-op: reminders suppressed for deal');
@@ -656,7 +658,22 @@ export class HubSpotController extends BaseController {
       return { email: contact_email, skipped: true, reason: 'all courses completed' };
     }
 
-    const determinedEmailType = await this.hubspotService.determineEmailType(deal_id, contact_email);
+    // Rate-limit: skip if an email went out in the last 48 hours
+    const history = await this.hubspotService.fetchLearnerEmailHistoryByDeal(deal_id, { contactEmail: contact_email, contactId });
+    const contactHistory = history.find(h => h.email.toLowerCase() === contact_email.toLowerCase());
+    const lastSentTs = contactHistory?.items?.[0]?.timestamp || null;
+    const lastSentMs = lastSentTs ? new Date(lastSentTs).getTime() : NaN;
+    const fortyEightHoursMs = 48 * 60 * 60 * 1000;
+    if (Number.isFinite(lastSentMs) && Date.now() - lastSentMs < fortyEightHoursMs) {
+      return { 
+        email: contact_email, 
+        skipped: true, 
+        reason: 'email sent within last 48 hours', 
+        lastSentAt: new Date(lastSentMs).toISOString() 
+      };
+    }
+
+    const determinedEmailType = await this.hubspotService.determineEmailType(deal_id, contact_email, history);
     const moodleRoot = process.env.MOODLE_ROOT || 'https://moodle.learndata.info';
     const baseUrl = process.env.BASE_URL || 'http://localhost:3080';
     const anyEnrolled = pendingCourses.some(c => c.enrolled);

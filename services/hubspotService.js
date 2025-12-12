@@ -1347,9 +1347,9 @@ async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
    * @param {string} contactEmail - The contact email address
    * @returns {Promise<'welcome'|'reminder'>} - The email type to send
    */
-  async determineEmailType(dealId, contactEmail) {
+  async determineEmailType(dealId, contactEmail, preFetchedHistory = null) {
     try {
-      const history = await this.fetchLearnerEmailHistoryByDeal(dealId);
+      const history = preFetchedHistory || await this.fetchLearnerEmailHistoryByDeal(dealId, { contactEmail });
       const contactHistory = history.find(h => h.email.toLowerCase() === contactEmail.toLowerCase());
       
       if (!contactHistory || !contactHistory.items || contactHistory.items.length === 0) {
@@ -1389,9 +1389,15 @@ async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
    * Fetch learner-specific email/notes history grouped by contact email.
    * Each item: { email, items: [{ id, type, subject, to, from, text, html, timestamp }] }
    */
-  async fetchLearnerEmailHistoryByDeal(dealId) {
+  /**
+   * Fetch learner-specific email/notes history grouped by contact email.
+   * Optionally filter to a single contact to reduce HubSpot calls.
+   */
+  async fetchLearnerEmailHistoryByDeal(dealId, { contactEmail = null, contactId = null } = {}) {
     try {
       const byEmail = new Map();
+      const targetEmailLower = contactEmail ? String(contactEmail).toLowerCase() : null;
+      const targetContactId = contactId ? String(contactId) : null;
 
       // Helper to push
       const pushForEmails = (emailsArr, item) => {
@@ -1419,13 +1425,26 @@ async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
             const p = nRes.data?.properties || {};
             // Contacts associated to this note
             let toEmails = [];
+            let assocContactIds = [];
             try {
               const assocContacts = await axios.get(
                 `${this.baseUrl}/crm/v3/objects/notes/${id}/associations/contacts`,
                 { headers: this.headers }
               );
-              const cids = (assocContacts.data?.results || []).map(r => r.id);
-              for (const cid of cids) {
+              assocContactIds = (assocContacts.data?.results || []).map(r => r.id);
+            } catch (_) {}
+
+            // If filtering by contact, skip if not associated
+            if (targetContactId && !assocContactIds.includes(targetContactId)) {
+              continue;
+            }
+
+            if (targetContactId && targetEmailLower) {
+              // We already know the target email/id; avoid extra contact lookups
+              toEmails = [contactEmail];
+            } else {
+              // Fallback: load contact emails for all associated contacts
+              for (const cid of assocContactIds) {
                 try {
                   const cRes = await axios.get(
                     `${this.baseUrl}/crm/v3/objects/contacts/${cid}?properties=email`,
@@ -1435,7 +1454,7 @@ async setAssociationLabels(fromType, fromId, toType, toId, labels = []) {
                   if (em) toEmails.push(em);
                 } catch (_) {}
               }
-            } catch (_) {}
+            }
 
             const item = {
               id,
