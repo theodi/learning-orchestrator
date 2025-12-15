@@ -24,16 +24,61 @@ export class HubSpotController extends BaseController {
     this.dealLearnersCache = new Map(); // key: `${dealId}:Learner` -> { ts, data }
   }
 
-  // In-memory queue for reminder jobs by deal
-  static reminderJobs = new Map(); // key: deal_id -> { status, startedAt, finishedAt, summary, error }
+  // In-memory queue for reminder jobs by deal+contact
+  static reminderJobs = new Map(); // key: `${dealId}:${contactEmailLower}` -> { status, startedAt, finishedAt, summary, error }
+  static reminderQueue = []; // FIFO queue of { dealId, contactEmail, debugMode }
+  static reminderWorkerRunning = false;
 
-  getReminderJob(dealId) {
-    return HubSpotController.reminderJobs.get(String(dealId));
+  getReminderJob(dealId, contactEmail) {
+    const key = `${dealId}:${String(contactEmail || '').toLowerCase()}`;
+    return HubSpotController.reminderJobs.get(key);
   }
 
-  setReminderJob(dealId, data) {
-    const current = this.getReminderJob(dealId) || {};
-    HubSpotController.reminderJobs.set(String(dealId), { ...current, ...data });
+  setReminderJob(dealId, contactEmail, data) {
+    const key = `${dealId}:${String(contactEmail || '').toLowerCase()}`;
+    const current = this.getReminderJob(dealId, contactEmail) || {};
+    HubSpotController.reminderJobs.set(key, { ...current, ...data });
+  }
+
+  enqueueReminderJob(dealId, contactEmail, debugMode) {
+    HubSpotController.reminderQueue.push({ dealId, contactEmail, debugMode });
+    if (debugMode) {
+      console.log(`[REMINDER-QUEUE] queued deal=${dealId} contact=${contactEmail} | pending=${HubSpotController.reminderQueue.length}`);
+    }
+    this.runReminderQueue();
+  }
+
+  runReminderQueue() {
+    if (HubSpotController.reminderWorkerRunning) return;
+    HubSpotController.reminderWorkerRunning = true;
+
+    const processNext = async () => {
+      const next = HubSpotController.reminderQueue.shift();
+      if (!next) {
+        HubSpotController.reminderWorkerRunning = false;
+        return;
+      }
+
+      const { dealId, contactEmail, debugMode } = next;
+      this.setReminderJob(dealId, contactEmail, { status: 'running', startedAt: Date.now(), contactEmail, debugMode });
+      if (debugMode) {
+        console.log(`[REMINDER-QUEUE] start deal=${dealId} contact=${contactEmail} | remaining=${HubSpotController.reminderQueue.length}`);
+      }
+      try {
+        const result = await this.sendReminderForSingleLearner(dealId, contactEmail, debugMode);
+        this.setReminderJob(dealId, contactEmail, { status: 'finished', finishedAt: Date.now(), summary: result });
+        if (debugMode) {
+          console.log(`[REMINDER-QUEUE] finished deal=${dealId} contact=${contactEmail} | result=${JSON.stringify(result)}`);
+        }
+      } catch (err) {
+        this.setReminderJob(dealId, contactEmail, { status: 'failed', finishedAt: Date.now(), error: err?.message || 'Failed to send learner reminder' });
+        console.error('Failed to send learner reminder (background):', err);
+      } finally {
+        setImmediate(processNext);
+      }
+    };
+
+    setImmediate(processNext);
   }
 
   // Browse page
@@ -445,12 +490,19 @@ export class HubSpotController extends BaseController {
         return this.sendError(res, 'contact_email (or email) is required for deal-send-reminders; bulk mode is disabled to avoid spam', HTTP_STATUS.BAD_REQUEST);
       }
 
-      try {
-        const result = await this.sendReminderForSingleLearner(deal_id, contactEmail, debugMode);
-        return this.sendSuccess(res, result, debugMode ? 'Debug: Reminder would be processed for learner' : 'Reminder processed for learner');
-      } catch (err) {
-        return this.sendError(res, err?.message || 'Failed to send learner reminder');
+      // If a job is already running or queued for this deal+contact, return immediately to avoid duplicate processing
+      const existingJob = this.getReminderJob(deal_id, contactEmail);
+      if (existingJob?.status === 'running') {
+        return this.sendSuccess(res, { queued: false, deal_id, contact_email: contactEmail, status: 'already_running' }, 'Reminder processing already in progress for this contact');
       }
+      if (existingJob?.status === 'queued') {
+        return this.sendSuccess(res, { queued: false, deal_id, contact_email: contactEmail, status: 'already_queued' }, 'Reminder already queued for this contact');
+      }
+
+      // Queue the job and return 200 immediately so webhook callers do not retry
+      this.setReminderJob(deal_id, contactEmail, { status: 'queued', queuedAt: Date.now(), contactEmail, debugMode });
+      this.enqueueReminderJob(deal_id, contactEmail, debugMode);
+      return this.sendSuccess(res, { queued: true, deal_id, contact_email: contactEmail }, debugMode ? 'Debug: reminder queued' : 'Reminder queued for processing');
     } catch (error) {
       return this.sendError(res, error.message || 'Failed to queue deal reminders');
     }
